@@ -1,0 +1,67 @@
+name: Motor (Windows)
+
+# Repositório público: executores padrão do GitHub sem custo.
+# Nunca use executores "larger" (são pagos mesmo em repositório público).
+
+on:
+  push:
+    branches: [main]
+    tags: ["motor-v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: motor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: motor-windows
+
+      - name: Formatação
+        run: cargo fmt -p darkvoid-motor -- --check
+
+      - name: Build do motor (release)
+        run: cargo build --release -p darkvoid-motor
+
+      - name: Testes do motor
+        run: cargo test --release -p darkvoid-motor
+
+      - name: Clippy do motor
+        run: cargo clippy --release -p darkvoid-motor --no-deps -- -D warnings
+
+      - name: Preparar executável
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/darkvoid-motor.exe dist/darkvoid-motor-x86_64-pc-windows-msvc.exe
+          $hash = (Get-FileHash dist/darkvoid-motor-x86_64-pc-windows-msvc.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  darkvoid-motor-x86_64-pc-windows-msvc.exe" | Out-File -Encoding ascii dist/darkvoid-motor-x86_64-pc-windows-msvc.exe.sha256
+          & dist/darkvoid-motor-x86_64-pc-windows-msvc.exe --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: darkvoid-motor-windows
+          path: dist/*
+          retention-days: 7
+
+      - name: Publicar release
+        if: startsWith(github.ref, 'refs/tags/motor-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

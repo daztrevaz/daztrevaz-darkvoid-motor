@@ -1,0 +1,20 @@
+[package]
+name = "darkvoid-motor"
+description = "Motor DARKVOID: processo auxiliar do editor do DarkFlow (prévia, reprodução, exportação e legendas) sobre o motor do FilmCraft"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "darkvoid-motor"
+path = "src/main.rs"
+
+[dependencies]
+filmcraft-engine = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
