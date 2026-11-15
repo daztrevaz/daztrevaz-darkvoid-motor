@@ -324,7 +324,7 @@ mod tests {
         }
     }
     #[test]
-    fn cancelled_download_never_opens_network_and_cleans_parts() {
+    fn partial_model_files_are_cleaned_and_never_installed() {
         let dir = tempfile::tempdir().unwrap();
         let model = find("whisper-small").unwrap();
         let model_dir = models::model_dir(dir.path(), model);
