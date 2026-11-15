@@ -9,6 +9,11 @@ on:
     tags: ["motor-v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versão a publicar (ex.: 0.0.1). Vazio = só build."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -60,8 +65,10 @@ jobs:
           retention-days: 7
 
       - name: Publicar release
-        if: startsWith(github.ref, 'refs/tags/motor-v')
+        if: startsWith(github.ref, 'refs/tags/motor-v') || inputs.versao != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.versao != '' && format('motor-v{0}', inputs.versao) || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           files: dist/*
           generate_release_notes: true
