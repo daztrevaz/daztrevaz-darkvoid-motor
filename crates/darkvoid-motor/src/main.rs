@@ -1,32 +1,78 @@
-//! Motor DARKVOID: processo auxiliar do editor do DarkFlow.
-//!
-//! Esqueleto da tarefa M0.1: só prova que o motor do FilmCraft compila no Windows e que o
-//! executável é publicado. O servidor do protocolo (docs/protocolo-motor.md) é a tarefa M0.2.
+//! Processo auxiliar local do editor DarkFlow.
+mod audio;
+mod motor;
+mod preview;
+mod protocol;
+mod server;
 
-use std::process::ExitCode;
+use std::{io::Read, path::PathBuf, process::ExitCode};
+use tokio::sync::watch;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+struct Options {
+    token: String,
+    data_dir: PathBuf,
+}
 
-    if args.iter().any(|a| a == "--version") {
+impl Options {
+    fn parse(mut args: impl Iterator<Item = String>) -> Result<Self, &'static str> {
+        let mut token = None;
+        let mut data_dir = PathBuf::from(r"D:\DARKVOID\Editor");
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                "--token" if token.is_none() => token = args.next(),
+                "--data-dir" => data_dir = args.next().map(PathBuf::from).ok_or("Informe a pasta de trabalho.")?,
+                _ => return Err("Argumento inválido."),
+            }
+        }
+        let token = token.filter(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())).ok_or("Informe --token com 32 bytes em hexadecimal.")?;
+        Ok(Self { token, data_dir })
+    }
+}
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    if args == ["--version"] {
         println!("darkvoid-motor {VERSION}");
         return ExitCode::SUCCESS;
     }
-
-    // Garante que o motor do FilmCraft está ligado ao binário (falha de build aparece no CI).
-    let temp = filmcraft_engine::temp_dir();
-
-    let info = serde_json::json!({
-        "event": "error",
-        "data": {
-            "code": "not_implemented",
-            "message": "O servidor do motor ainda não foi implementado (tarefa M0.2).",
-            "version": VERSION,
-            "temp": temp.display().to_string(),
+    let opts = match Options::parse(args.into_iter()) {
+        Ok(opts) => opts,
+        Err(message) => {
+            eprintln!("{message}");
+            return ExitCode::FAILURE;
         }
+    };
+    let (stop, stopped) = watch::channel(false);
+    let eof = stop.clone();
+    std::thread::spawn(move || {
+        let mut buf = [0; 1024];
+        while let Ok(n) = std::io::stdin().read(&mut buf) {
+            if n == 0 {
+                break;
+            }
+        }
+        let _ = eof.send(true);
     });
-    println!("{info}");
-    ExitCode::FAILURE
+    match server::run(opts.token, opts.data_dir, stop, stopped).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(_) => {
+            eprintln!("Não foi possível iniciar o servidor local.");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn validates_token_and_arguments() {
+        assert!(Options::parse(["--token".into(), "ab".repeat(32)].into_iter()).is_ok());
+        for args in [vec![], vec!["--token", "abc"], vec!["--data-dir"], vec!["--unknown"]] {
+            assert!(Options::parse(args.into_iter().map(str::to_owned)).is_err());
+        }
+    }
 }
