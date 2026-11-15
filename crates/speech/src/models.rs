@@ -304,6 +304,7 @@ pub fn download_files(dir: &Path, files: &[ModelFile], progress: DownloadProgres
 fn agent() -> ureq::Agent {
     let provider = std::sync::Arc::new(rustls_rustcrypto::provider());
     ureq::Agent::config_builder()
+        .https_only(true)
         .tls_config(
             ureq::tls::TlsConfig::builder()
                 .provider(ureq::tls::TlsProvider::Rustls)
@@ -319,6 +320,12 @@ fn agent() -> ureq::Agent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "download")]
+    #[test]
+    fn downloader_refuses_plain_http_before_connecting() {
+        assert!(matches!(agent().get("http://127.0.0.1:1/model").call(), Err(ureq::Error::RequireHttpsOnly(_))));
+    }
 
     #[test]
     fn catalogue_is_pinned_and_checksummed() {
