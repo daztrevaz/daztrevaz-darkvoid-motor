@@ -15,3 +15,11 @@ padrão de áudio conectado:
 ```powershell
 cargo test -p darkvoid-motor --test protocol playback_audio_clock_pause_resume_seek_and_end -- --ignored --nocapture
 ```
+
+`exportacao.mp4` é um segundo padrão sintético, com 0,4 s, 128 × 72, 5 fps,
+H.264 e tom AAC a 48 kHz. Dois quadros permitem testar todas as nove combinações
+de exportação até 2160p sem tornar o CI uma medição de desempenho.
+
+```powershell
+ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=size=128x72:rate=5 -f lavfi -i sine=frequency=440:sample_rate=48000 -t 0.4 -c:v libx264 -pix_fmt yuv420p -g 5 -bf 0 -c:a aac -b:a 64k -y exportacao.mp4
+```

@@ -1,5 +1,7 @@
 //! Processo auxiliar local do editor DarkFlow.
 mod audio;
+mod encoding;
+mod exports;
 mod motor;
 mod preview;
 mod protocol;
