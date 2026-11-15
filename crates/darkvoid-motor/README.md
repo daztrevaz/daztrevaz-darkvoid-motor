@@ -1,4 +1,4 @@
-# Motor DARKVOID — M0.2
+# Motor DARKVOID — M0.2 e M0.3
 
 Servidor local do protocolo de [`docs/protocolo-motor.md`](../../docs/protocolo-motor.md).
 Não modifica o contrato nem os crates importados do FilmCraft.
@@ -16,10 +16,11 @@ Uma nova conexão autenticada substitui a anterior. EOF em stdin ou `shutdown`
 encerra o motor e interrompe o áudio. Diagnósticos ficam em stderr.
 
 Comandos implementados: `hello`, `media.probe`, `session.open`, `preview.config`,
-`transport.play`, `transport.pause`, `transport.seek` e `shutdown`.
-Exportação e transcrição pertencem a M0.3/M0.4; retornam `unknown_command`.
-`hello` informa a GPU usada na composição, `software` como codificador e
-`speech: false`. Não anuncia NVENC sem implementação e detecção.
+`transport.play`, `transport.pause`, `transport.seek`, `export.start`, `job.cancel` e `shutdown`.
+Transcrição pertence a M0.4 e retorna `unknown_command`.
+`hello` informa a GPU usada na composição e `speech: false`.
+Os codificadores sempre incluem `software`; `nvenc_h264` e `nvenc_hevc` só entram
+quando cada codec é inicializado com sucesso no driver, por meio da API segura existente.
 
 ## Reprodução
 
@@ -43,6 +44,34 @@ Exportação e transcrição pertencem a M0.3/M0.4; retornam `unknown_command`.
 O motor não inicia autosave, downloads, serviços de IA ou acesso a serviços externos.
 Mídia precisa estar em arquivo local. A pasta `cache` é criada sob `--data-dir`.
 
+## Exportação
+
+`export.start` recebe `path`, `preset` e `encoder`, como no contrato, e devolve `jobId`.
+Os três modelos reutilizam os presets do engine: Shorts 1080 × 1920, YouTube
+1920 × 1080 e YouTube 3840 × 2160. Mantêm áudio AAC, frame rate da sessão e as
+configurações de bitrate e enquadramento do preset. Shorts inclui normalização a −14 LUFS.
+
+A exportação usa um snapshot da sessão inteira, compositor GPU com fallback CPU
+e um pool de mídia independente. O worker tem limite de quatro threads do engine.
+Uma exportação pode rodar por vez; outra tentativa retorna `export_busy`.
+
+`software` seleciona H.264; os dois modos NVENC selecionam H.264 ou HEVC quando
+disponíveis. Sem o codec solicitado, ou se o hardware falhar ao codificar, o job
+usa H.264 por software. Uma falha durante a codificação reinicia o arquivo
+temporário inteiro, sem misturar bitstreams. O fallback é registrado em stderr.
+
+`job.progress` é emitido a cada 250 ms, com fração monotônica e ETA opcional;
+`job.done` traz `{path, bytes}` depois de salvar o arquivo. Falhas e cancelamento
+geram `job.error`, com código estável e mensagem em português. `job.cancel`
+retorna imediatamente e aciona o cancelamento cooperativo. EOF e shutdown
+cancelam o worker antes de encerrar o processo.
+
+O destino deve ser um MP4 local em pasta existente. Arquivos existentes nunca
+são sobrescritos. A codificação grava um temporário em `<data-dir>/cache`,
+removido em caso de erro ou cancelamento. A publicação no mesmo disco é feita
+sem sobrescrita. Entre discos, o motor copia para um arquivo novo no caminho
+solicitado, verifica cancelamento e remove sua saída incompleta se a cópia falhar.
+
 ## Verificação
 
 ```powershell
@@ -55,7 +84,9 @@ cargo test -p darkvoid-motor
 Os testes do processo verificam token, substituição da conexão, erros, EOF,
 shutdown, probe, formatos, configuração e JPEG real após seek pausado.
 Um teste unitário força o caminho CPU. A mídia versionada é sintética.
-Os testes físicos são ignorados por padrão para o CI não exigir placa de som.
+Os testes de exportação verificam as nove combinações de modelo/codificador,
+dimensões, duração, áudio, progresso, erros, cancelamento e limpeza dos temporários.
+Testes físicos e a medição de um minuto são ignorados por padrão no CI.
 
 ```powershell
 cargo test -p darkvoid-motor --test protocol playback_audio_clock_pause_resume_seek_and_end -- --ignored --nocapture
@@ -68,3 +99,15 @@ A medição conta JPEGs recebidos pelo WebSocket, confere avanço do relógio,
 verifica ausência de underruns e mede seek até o JPEG em 50%, 90% e 10% da mídia.
 A tolerância de medição é 29,5 qps para vídeo nominal de 30 fps; cada seek deve
 ficar abaixo de 300 ms. O teste não substitui escuta humana ou validação no DarkFlow.
+
+Para medir um minuto de exportação por modelo, com NVENC H.264 quando disponível:
+
+```powershell
+$env:MOTOR_EXPORT_MEDIA = '<MP4-sintetico-de-60-segundos>'
+$env:MOTOR_EXPORT_DIR = '<pasta-existente-sem-os-arquivos-de-saida>'
+cargo test --release -p darkvoid-motor --test protocol acceptance_export_one_minute_each_preset -- --ignored --nocapture
+```
+
+O teste mede do pedido até `job.done`, incluindo preparação, codificação e publicação.
+Não usa FFmpeg no produto. FFmpeg pode ser usado fora do motor para gerar e conferir
+as mídias sintéticas; o teste não comprova abertura no player nem upload ao YouTube Studio.

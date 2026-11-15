@@ -310,7 +310,7 @@ mod tests {
             _: filmcraft_time::FrameRate,
             settings: &ExportSettings,
         ) -> Option<filmcraft_export::Result<Box<dyn filmcraft_export::VideoEncoder>>> {
-            if format != Format::H264 || settings.hardware_encoding != HardwareEncoding::Auto || !settings.path.contains("dv-fallback-test-") {
+            if format != Format::Hevc || settings.hardware_encoding != HardwareEncoding::Auto || !settings.path.contains("dv-fallback-test-") {
                 return None;
             }
             let mut file = settings.output_file.as_ref().unwrap().as_ref();
@@ -318,12 +318,14 @@ mod tests {
             Some(Err(ExportError::Encode("falha de hardware simulada".into())))
         }
         filmcraft_export::register_encoder(broken_hardware);
+        filmcraft_export::register_format_probe(Format::Hevc, || true);
         let mut session = Session::new(Arc::new(filmcraft_engine::FsServices));
         let input = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/exportacao.mp4");
         let imported = session.execute("file.import", json!({"paths":[input]})).unwrap();
         session.execute("file.newSequenceFromClip", json!({"items":imported["items"]})).unwrap();
         let output = tempfile::Builder::new().prefix("dv-fallback-test-").suffix(".mp4").tempfile().unwrap();
         let mut settings = ExportSettings {
+            format: Format::Hevc,
             path: output.path().to_string_lossy().into_owned(),
             hardware_encoding: HardwareEncoding::Auto,
             output_file: Some(Arc::new(output.as_file().try_clone().unwrap())),

@@ -96,7 +96,9 @@ async fn authentication_replacement_errors_and_shutdown() {
     let hello = request(&mut first, 1, "hello", json!({})).await;
     assert_eq!(hello["ok"], true);
     assert_eq!(hello["result"]["speech"], false);
-    assert_eq!(hello["result"]["encoders"], json!(["software"]));
+    let encoders = hello["result"]["encoders"].as_array().unwrap();
+    assert_eq!(encoders.first().unwrap(), "software");
+    assert!(encoders.iter().all(|e| ["software", "nvenc_h264", "nvenc_hevc"].iter().any(|name| e == name)));
     // Um token errado não derruba a conexão autenticada.
     assert!(connect_async(motor.url("errado")).await.is_err());
     assert_eq!(request(&mut first, 2, "hello", json!({})).await["ok"], true);
@@ -117,7 +119,7 @@ async fn authentication_replacement_errors_and_shutdown() {
         (5, "media.probe", json!({"path":"arquivo-inexistente.mp4"}), "media_not_found"),
         (6, "preview.config", json!({"maxWidth":0,"maxHeight":1080,"quality":80}), "invalid_params"),
         (7, "preview.config", json!({"maxWidth":1920,"maxHeight":1080,"quality":101}), "invalid_params"),
-        (8, "export.start", json!({}), "unknown_command"),
+        (8, "speech.models", json!({}), "unknown_command"),
         (9, "session.open", json!({"path":fixture(),"format":"errado"}), "invalid_params"),
         (10, "media.probe", json!({"path":"https://example.invalid/video.mp4"}), "invalid_params"),
     ] {
@@ -289,4 +291,135 @@ async fn benchmark_1080p_audio_and_seek() {
     assert!(fps >= 29.5, "prévia abaixo de 30 qps: {fps}");
     assert!(last_seconds >= seconds as f64 - 0.5, "relógio de áudio atrasado");
     assert!(seek_ms.iter().all(|ms| *ms < 300.0), "seek excede 300 ms");
+}
+
+fn export_fixture() -> String {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/exportacao.mp4").to_string_lossy().into_owned()
+}
+
+async fn job_finished(socket: &mut Socket, job: &Value) -> Value {
+    let mut fraction = 0.0;
+    let mut progress = false;
+    let deadline = Instant::now() + Duration::from_secs(600);
+    loop {
+        assert!(Instant::now() < deadline, "exportação excedeu prazo");
+        let Message::Text(text) = next(socket).await else {
+            continue;
+        };
+        let event: Value = serde_json::from_str(&text).unwrap();
+        if event["data"]["jobId"] != *job {
+            continue;
+        }
+        assert_eq!(event["data"]["kind"], "export");
+        match event["event"].as_str() {
+            Some("job.progress") => {
+                let current = event["data"]["fraction"].as_f64().unwrap();
+                assert!(current >= fraction && current <= 1.0);
+                assert!(event["data"]["etaSeconds"].is_null() || event["data"]["etaSeconds"].as_f64().unwrap() >= 0.0);
+                fraction = current;
+                progress = true;
+            }
+            Some("job.done") => {
+                assert!(progress);
+                assert_eq!(fraction, 1.0);
+                return event;
+            }
+            Some("job.error") => return event,
+            _ => panic!("evento inesperado: {event}"),
+        }
+    }
+}
+
+#[tokio::test]
+async fn export_all_presets_and_encoders_produce_media_with_audio() {
+    let mut motor = Motor::start();
+    let mut socket = motor.connect().await;
+    assert_eq!(request(&mut socket, 1, "session.open", json!({"path":export_fixture(),"format":"source"})).await["ok"], true);
+    for (preset, width, height) in [("shorts_1080x1920", 1080, 1920), ("youtube_1080p", 1920, 1080), ("youtube_2160p", 3840, 2160)] {
+        for encoder in ["software", "nvenc_h264", "nvenc_hevc"] {
+            let path = motor._dir.path().join(format!("{preset}-{encoder}.mp4"));
+            let started = request(&mut socket, 2, "export.start", json!({"path":path,"preset":preset,"encoder":encoder})).await;
+            assert_eq!(started["ok"], true, "{started}");
+            let done = job_finished(&mut socket, &started["result"]["jobId"]).await;
+            assert_eq!(done["event"], "job.done", "{done}");
+            assert_eq!(done["data"]["result"]["path"], path.to_string_lossy().as_ref());
+            assert_eq!(done["data"]["result"]["bytes"].as_u64().unwrap(), std::fs::metadata(&path).unwrap().len());
+            let probe = request(&mut socket, 3, "media.probe", json!({"path":path})).await;
+            assert_eq!(probe["ok"], true, "{probe}");
+            assert_eq!(probe["result"]["width"], width);
+            assert_eq!(probe["result"]["height"], height);
+            assert_eq!(probe["result"]["hasAudio"], true);
+            assert!((probe["result"]["duration"].as_f64().unwrap() - 0.4).abs() < 0.1);
+        }
+    }
+    assert!(std::fs::read_dir(motor._dir.path().join("cache")).unwrap().next().is_none());
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+}
+
+#[tokio::test]
+async fn export_validation_cancellation_and_shutdown_preserve_files() {
+    let mut motor = Motor::start();
+    let mut socket = motor.connect().await;
+    let path = motor._dir.path().join("cancelado.mp4");
+    let params = json!({"path":path,"preset":"youtube_2160p","encoder":"software"});
+    assert_eq!(request(&mut socket, 1, "export.start", params.clone()).await["error"]["code"], "no_session");
+    assert_eq!(request(&mut socket, 2, "session.open", json!({"path":fixture(),"format":"source"})).await["ok"], true);
+    for bad in [json!({"path":path,"preset":"outro","encoder":"software"}), json!({"path":path,"preset":"youtube_1080p","encoder":"outro"})] {
+        assert_eq!(request(&mut socket, 3, "export.start", bad).await["error"]["code"], "invalid_params");
+    }
+    let existing = motor._dir.path().join("existente.mp4");
+    std::fs::write(&existing, b"preservar").unwrap();
+    assert_eq!(
+        request(&mut socket, 4, "export.start", json!({"path":existing,"preset":"youtube_1080p","encoder":"software"})).await["error"]["code"],
+        "output_exists"
+    );
+    let start = request(&mut socket, 5, "export.start", params.clone()).await;
+    assert_eq!(start["ok"], true, "{start}");
+    assert_eq!(request(&mut socket, 6, "export.start", params.clone()).await["error"]["code"], "export_busy");
+    assert_eq!(request(&mut socket, 7, "job.cancel", json!({"jobId":0})).await["error"]["code"], "job_not_found");
+    assert_eq!(request(&mut socket, 8, "job.cancel", json!({"jobId":start["result"]["jobId"]})).await["ok"], true);
+    let cancelled = job_finished(&mut socket, &start["result"]["jobId"]).await;
+    assert_eq!(cancelled["event"], "job.error", "{cancelled}");
+    assert_eq!(cancelled["data"]["error"]["code"], "job_cancelled");
+    assert!(!path.exists());
+    assert!(std::fs::read_dir(motor._dir.path().join("cache")).unwrap().next().is_none());
+    assert_eq!(std::fs::read(&existing).unwrap(), b"preservar");
+    assert_eq!(request(&mut socket, 9, "export.start", params).await["ok"], true);
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+    assert!(!path.exists());
+    assert!(std::fs::read_dir(motor._dir.path().join("cache")).unwrap().next().is_none());
+}
+
+#[tokio::test]
+#[ignore = "Exporta um minuto por modelo no PC; requer MOTOR_EXPORT_MEDIA e MOTOR_EXPORT_DIR."]
+async fn acceptance_export_one_minute_each_preset() {
+    let input = std::env::var("MOTOR_EXPORT_MEDIA").expect("MOTOR_EXPORT_MEDIA");
+    let output = std::path::PathBuf::from(std::env::var("MOTOR_EXPORT_DIR").expect("MOTOR_EXPORT_DIR"));
+    std::fs::create_dir_all(&output).unwrap();
+    let mut motor = Motor::start();
+    let mut socket = motor.connect().await;
+    let hello = request(&mut socket, 1, "hello", json!({})).await;
+    eprintln!("Codificadores detectados: {}", hello["result"]["encoders"]);
+    let open = request(&mut socket, 2, "session.open", json!({"path":input,"format":"source"})).await;
+    assert_eq!(open["ok"], true, "{open}");
+    assert!((open["result"]["duration"].as_f64().unwrap() - 60.0).abs() < 0.1);
+    for (preset, width, height) in [("shorts_1080x1920", 1080, 1920), ("youtube_1080p", 1920, 1080), ("youtube_2160p", 3840, 2160)] {
+        let path = output.join(format!("{preset}.mp4"));
+        let now = Instant::now();
+        let start = request(&mut socket, 3, "export.start", json!({"path":path,"preset":preset,"encoder":"nvenc_h264"})).await;
+        assert_eq!(start["ok"], true, "{start}");
+        let done = job_finished(&mut socket, &start["result"]["jobId"]).await;
+        assert_eq!(done["event"], "job.done", "{done}");
+        eprintln!("{preset}: {:.3} s; {} bytes", now.elapsed().as_secs_f64(), done["data"]["result"]["bytes"]);
+        let probe = request(&mut socket, 4, "media.probe", json!({"path":path})).await;
+        assert_eq!(probe["result"]["width"], width);
+        assert_eq!(probe["result"]["height"], height);
+        assert_eq!(probe["result"]["hasAudio"], true);
+        assert!((probe["result"]["duration"].as_f64().unwrap() - 60.0).abs() < 0.1);
+    }
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+    eprintln!("{}", std::fs::read_to_string(&motor.stderr).unwrap());
 }
