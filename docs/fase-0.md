@@ -24,7 +24,7 @@ D0.1 começa já, com o cliente simulado; não precisa esperar o motor.
 
 ## Tarefas
 
-### M0.1 · Preparar o repositório do motor (Claude)
+### M0.1 · Preparar o repositório do motor (Claude) · concluída em 15/11 (release motor-v0.0.1)
 - Importar o FilmCraft no commit `59c6de0b9189c007ddd4eaa6c8b97e5a6c188937` para `daztrevaz/daztrevaz-darkvoid-motor`.
 - Remover a interface deles (`apps/filmcraft`, `apps/filmcraft-web`, `crates/ui-egui`) e o servidor
   de IA do build padrão; manter `LICENSE-MIT`, `LICENSE-APACHE`, `NOTICE` e créditos.
@@ -56,7 +56,7 @@ D0.1 começa já, com o cliente simulado; não precisa esperar o motor.
 - Aceite: 1 min em PT-BR com o modelo small, palavras com início e fim, em menos de 1 min no
   Ryzen 5600X; download cancelável.
 
-### I0.1 · Cliente do motor e simulado (Claude)
+### I0.1 · Cliente do motor e simulado (Claude) · entregue em 15/11 (src/lib/motor)
 - `src/lib/motor/`: tipos do protocolo, cliente WebSocket com pedidos e eventos tipados, leitor do
   quadro `DVF1`, e `mock.ts` (motor falso no navegador, gerando quadros e eventos).
 - Aceite: o simulado toca um vídeo falso de 10 min a 30 qps no `npm run dev`.
