@@ -1,6 +1,7 @@
 use crate::{
     VERSION,
     audio::Audio,
+    exports::Exports,
     preview::{self, Frame, Renderer},
     protocol::{self, Result, error, field},
 };
@@ -16,7 +17,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
 pub enum Command {
     Request(u64, protocol::Request, oneshot::Sender<Value>),
@@ -29,6 +30,7 @@ pub struct Updates {
     pub stats: watch::Sender<Value>,
     pub epoch: Arc<AtomicU64>,
     pub active_client: Arc<AtomicU64>,
+    pub jobs: broadcast::Sender<Value>,
 }
 impl Updates {
     pub fn new() -> Self {
@@ -38,13 +40,15 @@ impl Updates {
             stats: watch::channel(json!({})).0,
             epoch: Arc::new(AtomicU64::new(0)),
             active_client: Arc::new(AtomicU64::new(0)),
+            jobs: broadcast::channel(64).0,
         }
     }
 }
 
-pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: watch::Receiver<bool>) {
+pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: watch::Receiver<bool>, cache: std::path::PathBuf) {
     let renderer = Renderer::new(updates.frames.clone(), updates.epoch.clone());
     let mut motor = Motor {
+        exports: Exports::new(cache, updates.jobs.clone()),
         session: Session::new(Arc::new(FsServices)),
         config: preview::Config::default(),
         renderer,
@@ -73,6 +77,7 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
             Err(mpsc::error::TryRecvError::Disconnected) => break,
             Err(mpsc::error::TryRecvError::Empty) => std::thread::sleep(Duration::from_millis(2)),
         }
+        motor.exports.poll();
         if motor.audio.is_none() {
             stats_at = Instant::now();
             rendered = motor.renderer.metrics.rendered.load(Ordering::Relaxed);
@@ -100,6 +105,7 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
 }
 
 struct Motor {
+    exports: Exports,
     session: Session,
     config: preview::Config,
     renderer: Renderer,
@@ -111,7 +117,9 @@ struct Motor {
 impl Motor {
     fn execute(&mut self, command: &str, params: Value) -> Result<Value> {
         match command {
-            "hello" => Ok(json!({"version":VERSION,"gpu":self.renderer.gpu,"encoders":["software"],"speech":false})),
+            "hello" => Ok(json!({"version":VERSION,"gpu":self.renderer.gpu,"encoders":self.exports.capabilities.names(),"speech":false})),
+            "export.start" => self.exports.start(&self.session, field(params)?),
+            "job.cancel" => self.exports.cancel(field(params)?),
             "media.probe" => {
                 let p: Path = field(params)?;
                 let info = self.probe(&p.path)?;

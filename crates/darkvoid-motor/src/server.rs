@@ -33,7 +33,7 @@ pub async fn run(token: String, data_dir: PathBuf, stop: watch::Sender<bool>, mu
     let updates = Updates::new();
     let actor_updates = updates.clone();
     let actor_stop = stopped.clone();
-    let worker = std::thread::spawn(move || motor::run(rx, actor_updates, actor_stop));
+    let worker = std::thread::spawn(move || motor::run(rx, actor_updates, actor_stop, data_dir.join("cache")));
     let owner = watch::channel(0u64).0;
     println!("{}", json!({"event":"ready", "port":listener.local_addr()?.port(), "version":VERSION}));
     io::stdout().flush()?;
@@ -93,6 +93,7 @@ async fn connection(stream: TcpStream, token: String, client: Client) {
     let mut frames = client.updates.frames.subscribe();
     let mut state = client.updates.state.subscribe();
     let mut stats = client.updates.stats.subscribe();
+    let mut jobs = client.updates.jobs.subscribe();
     loop {
         let mut shutdown = false;
         let outgoing = tokio::select! {
@@ -117,19 +118,20 @@ async fn connection(stream: TcpStream, token: String, client: Client) {
                     _ => break,
                 }
             }
-            changed = frames.changed() => {
-                if changed.is_err() { break; }
+            _ = frames.changed() => {
                 let Some(message) = frame_message(&mut frames, &client.updates) else { continue; };
                 message
             }
-            changed = state.changed() => {
-                if changed.is_err() { break; }
+            _ = state.changed() => {
                 Message::Text(state.borrow_and_update().to_string().into())
             }
-            changed = stats.changed() => {
-                if changed.is_err() { break; }
+            _ = stats.changed() => {
                 Message::Text(stats.borrow_and_update().to_string().into())
             }
+            event = jobs.recv() => match event {
+                Ok(event) => Message::Text(event.to_string().into()),
+                Err(_) => break,
+            },
         };
         // Um cliente lento não bloqueia o áudio; no máximo uma imagem em envio.
         let sent = tokio::select! {
