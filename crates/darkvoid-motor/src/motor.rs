@@ -45,10 +45,12 @@ impl Updates {
     }
 }
 
-pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: watch::Receiver<bool>, cache: std::path::PathBuf) {
+pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: watch::Receiver<bool>, data_dir: std::path::PathBuf) {
     let renderer = Renderer::new(updates.frames.clone(), updates.epoch.clone());
+    let ids = Arc::new(AtomicU64::new(1));
     let mut motor = Motor {
-        exports: Exports::new(cache, updates.jobs.clone()),
+        exports: Exports::new(data_dir.join("cache"), updates.jobs.clone(), ids.clone()),
+        speech: crate::speech::Speech::new(data_dir.join("modelos"), updates.jobs.clone(), ids),
         session: Session::new(Arc::new(FsServices)),
         config: preview::Config::default(),
         renderer,
@@ -78,6 +80,7 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
             Err(mpsc::error::TryRecvError::Empty) => std::thread::sleep(Duration::from_millis(2)),
         }
         motor.exports.poll();
+        motor.speech.poll();
         if motor.audio.is_none() {
             stats_at = Instant::now();
             rendered = motor.renderer.metrics.rendered.load(Ordering::Relaxed);
@@ -106,6 +109,7 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
 
 struct Motor {
     exports: Exports,
+    speech: crate::speech::Speech,
     session: Session,
     config: preview::Config,
     renderer: Renderer,
@@ -117,9 +121,17 @@ struct Motor {
 impl Motor {
     fn execute(&mut self, command: &str, params: Value) -> Result<Value> {
         match command {
-            "hello" => Ok(json!({"version":VERSION,"gpu":self.renderer.gpu,"encoders":self.exports.capabilities.names(),"speech":false})),
+            "hello" => {
+                Ok(json!({"version":VERSION,"gpu":self.renderer.gpu,"encoders":self.exports.capabilities.names(),"speech":filmcraft_speech::available()}))
+            }
+            "speech.models" => Ok(self.speech.list()),
+            "speech.download" => self.speech.download(field(params)?),
+            "speech.transcribe" => self.speech.transcribe(&self.session, field(params)?),
             "export.start" => self.exports.start(&self.session, field(params)?),
-            "job.cancel" => self.exports.cancel(field(params)?),
+            "job.cancel" => {
+                let params: crate::exports::Cancel = field(params)?;
+                if self.speech.cancel(params.job_id) { Ok(json!({})) } else { self.exports.cancel(params) }
+            }
             "media.probe" => {
                 let p: Path = field(params)?;
                 let info = self.probe(&p.path)?;

@@ -33,7 +33,7 @@ pub async fn run(token: String, data_dir: PathBuf, stop: watch::Sender<bool>, mu
     let updates = Updates::new();
     let actor_updates = updates.clone();
     let actor_stop = stopped.clone();
-    let worker = std::thread::spawn(move || motor::run(rx, actor_updates, actor_stop, data_dir.join("cache")));
+    let worker = std::thread::spawn(move || motor::run(rx, actor_updates, actor_stop, data_dir));
     let owner = watch::channel(0u64).0;
     println!("{}", json!({"event":"ready", "port":listener.local_addr()?.port(), "version":VERSION}));
     io::stdout().flush()?;

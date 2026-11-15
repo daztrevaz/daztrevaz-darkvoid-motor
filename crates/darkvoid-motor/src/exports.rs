@@ -12,7 +12,11 @@ use std::{
     fs,
     io::{Read, Seek, Write},
     path::{Path, PathBuf},
-    sync::{Arc, atomic::Ordering, mpsc},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -46,7 +50,7 @@ pub struct Start {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Cancel {
-    job_id: u64,
+    pub job_id: u64,
 }
 
 struct Running {
@@ -60,13 +64,13 @@ struct Running {
 pub struct Exports {
     pub capabilities: Capabilities,
     cache: PathBuf,
-    next_id: u64,
+    ids: Arc<AtomicU64>,
     active: Option<Running>,
     events: broadcast::Sender<Value>,
 }
 impl Exports {
-    pub fn new(cache: PathBuf, events: broadcast::Sender<Value>) -> Self {
-        Self { capabilities: Capabilities::detect(), cache, next_id: 1, active: None, events }
+    pub fn new(cache: PathBuf, events: broadcast::Sender<Value>, ids: Arc<AtomicU64>) -> Self {
+        Self { capabilities: Capabilities::detect(), cache, ids, active: None, events }
     }
     pub fn start(&mut self, session: &Session, params: Start) -> Result<Value> {
         if self.active.is_some() {
@@ -112,8 +116,7 @@ impl Exports {
                 let _ = tx.send(outcome);
             })
             .map_err(|_| error("export_failed", "Não foi possível iniciar a exportação."))?;
-        let id = self.next_id;
-        self.next_id += 1;
+        let id = self.ids.fetch_add(1, Ordering::Relaxed);
         self.active = Some(Running { id, progress, result, worker, emitted_at: Instant::now() - Duration::from_secs(1), fraction: 0.0 });
         Ok(json!({"jobId":id}))
     }

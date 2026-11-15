@@ -21,11 +21,14 @@ struct Motor {
 }
 impl Motor {
     fn start() -> Self {
+        Self::start_with_data_dir(None)
+    }
+    fn start_with_data_dir(data_dir: Option<&std::path::Path>) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let stderr = dir.path().join("stderr.log");
         let mut child = Command::new(env!("CARGO_BIN_EXE_darkvoid-motor"))
             .args(["--token", TOKEN, "--data-dir"])
-            .arg(dir.path())
+            .arg(data_dir.unwrap_or(dir.path()))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(std::fs::File::create(&stderr).unwrap())
@@ -95,7 +98,7 @@ async fn authentication_replacement_errors_and_shutdown() {
     let mut first = motor.connect().await;
     let hello = request(&mut first, 1, "hello", json!({})).await;
     assert_eq!(hello["ok"], true);
-    assert_eq!(hello["result"]["speech"], false);
+    assert_eq!(hello["result"]["speech"], true);
     let encoders = hello["result"]["encoders"].as_array().unwrap();
     assert_eq!(encoders.first().unwrap(), "software");
     assert!(encoders.iter().all(|e| ["software", "nvenc_h264", "nvenc_hevc"].iter().any(|name| e == name)));
@@ -119,7 +122,7 @@ async fn authentication_replacement_errors_and_shutdown() {
         (5, "media.probe", json!({"path":"arquivo-inexistente.mp4"}), "media_not_found"),
         (6, "preview.config", json!({"maxWidth":0,"maxHeight":1080,"quality":80}), "invalid_params"),
         (7, "preview.config", json!({"maxWidth":1920,"maxHeight":1080,"quality":101}), "invalid_params"),
-        (8, "speech.models", json!({}), "unknown_command"),
+        (8, "speech.unknown", json!({}), "unknown_command"),
         (9, "session.open", json!({"path":fixture(),"format":"errado"}), "invalid_params"),
         (10, "media.probe", json!({"path":"https://example.invalid/video.mp4"}), "invalid_params"),
     ] {
