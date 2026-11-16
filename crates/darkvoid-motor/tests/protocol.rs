@@ -10,6 +10,7 @@ use tokio::{net::TcpStream, time::timeout};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+mod caption_cases;
 const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 struct Motor {
@@ -90,6 +91,211 @@ fn fixture() -> String {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/padrao.mp4").to_string_lossy().into_owned()
 }
 
+async fn caption_frame(socket: &mut Socket, id: u64, params: Value) -> Vec<u8> {
+    command_frame(socket, id, "captions.set", params).await
+}
+async fn command_frame(socket: &mut Socket, id: u64, cmd: &str, params: Value) -> Vec<u8> {
+    socket.send(Message::Text(json!({"id":id,"cmd":cmd,"params":params}).to_string().into())).await.unwrap();
+    let mut result = None;
+    let mut ack = false;
+    while !ack || result.is_none() {
+        match next(socket).await {
+            Message::Binary(bytes) => {
+                result = Some(bytes[24..].to_vec());
+            }
+            Message::Text(text) => {
+                let v: Value = serde_json::from_str(&text).unwrap();
+                if v["id"] == id {
+                    assert_eq!(v["ok"], true, "{v}");
+                    ack = true;
+                }
+            }
+            _ => {}
+        }
+    }
+    result.unwrap()
+}
+
+#[tokio::test]
+async fn captions_replace_clear_validation_and_srt() {
+    let mut motor = Motor::start();
+    let mut socket = motor.connect().await;
+    assert_eq!(request(&mut socket, 1, "captions.set", caption_cases::captions("phrase", 3)).await["error"]["code"], "no_session");
+    assert_eq!(request(&mut socket, 2, "captions.clear", json!({})).await["error"]["code"], "no_session");
+    request(&mut socket, 3, "session.open", json!({"path":fixture(),"format":"horizontal"})).await;
+    frame(&mut socket, 0.0).await;
+    let mut images = Vec::new();
+    request(&mut socket, 10, "transport.seek", json!({"seconds":0.08})).await;
+    frame(&mut socket, 0.08).await;
+    for mode in ["phrase", "word", "karaoke", "pop"] {
+        let jpeg = caption_frame(&mut socket, 4, caption_cases::captions(mode, 3)).await;
+        images.push(jpeg);
+    }
+    assert!(images.windows(2).all(|v| v[0] != v[1]));
+    for bad in [
+        json!({}),
+        {
+            let mut p = caption_cases::captions("phrase", 3);
+            p["style"]["color"] = json!("#zzzzzz");
+            p
+        },
+        {
+            let mut p = caption_cases::captions("phrase", 3);
+            p["cues"][0]["words"][1]["start"] = json!(0.1);
+            p
+        },
+    ] {
+        assert_eq!(request(&mut socket, 5, "captions.set", bad).await["error"]["code"], "captions_invalid");
+    }
+    let path = motor._dir.path().join("legendas.srt");
+    assert_eq!(request(&mut socket, 6, "captions.exportSrt", json!({"path":path})).await["ok"], true);
+    let srt = std::fs::read_to_string(&path).unwrap();
+    assert!(srt.contains("00:00:00,000 --> 00:00:03,000"));
+    assert!(srt.contains("Olá, São Paulo!"));
+    assert_eq!(request(&mut socket, 7, "captions.exportSrt", json!({"path":path})).await["ok"], false);
+    assert_eq!(request(&mut socket, 8, "captions.clear", json!({})).await["ok"], true);
+    frame(&mut socket, 0.08).await;
+    let empty = motor._dir.path().join("vazio.srt");
+    assert_eq!(request(&mut socket, 9, "captions.exportSrt", json!({"path":empty})).await["ok"], true);
+    assert_eq!(std::fs::read(empty).unwrap().len(), 0);
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+}
+
+#[tokio::test]
+#[ignore = "Medição M1.1: requer MOTOR_BENCH_MEDIA sintético de 60s, FFmpeg e áudio padrão."]
+async fn captions_benchmark_one_minute() {
+    let media = std::env::var("MOTOR_BENCH_MEDIA").unwrap();
+    let output = std::path::PathBuf::from(std::env::var("MOTOR_CAPTION_OUTPUT").unwrap());
+    std::fs::create_dir_all(&output).unwrap();
+    let mut motor = Motor::start();
+    let mut socket = motor.connect().await;
+    let hello = request(&mut socket, 1, "hello", json!({})).await;
+    eprintln!("M1.1 GPU: {}", hello["result"]["gpu"]);
+    let encoder = if hello["result"]["encoders"].as_array().unwrap().iter().any(|e| e == "nvenc_h264") { "nvenc_h264" } else { "software" };
+    let open = request(&mut socket, 2, "session.open", json!({"path":media,"format":"source"})).await;
+    assert_eq!(open["ok"], true, "{open}");
+    assert_eq!(open["result"]["width"], 1920);
+    frame(&mut socket, 0.0).await;
+    let mut measurements = Vec::new();
+    for mode in ["phrase", "word", "karaoke", "pop"] {
+        request(&mut socket, 3, "transport.seek", json!({"seconds":0.0})).await;
+        frame(&mut socket, 0.0).await;
+        let mut redraws = Vec::new();
+        for size in [54, 56, 58, 54, 55] {
+            let mut p = caption_cases::captions(mode, 60);
+            p["style"]["size"] = json!(size);
+            let start = Instant::now();
+            let jpeg = caption_frame(&mut socket, 4, p).await;
+            redraws.push(start.elapsed().as_secs_f64() * 1000.0);
+            std::fs::write(output.join(format!("{mode}-preview.jpg")), jpeg).unwrap();
+        }
+        let play = request(&mut socket, 5, "transport.play", json!({})).await;
+        assert_eq!(play["ok"], true, "{play}");
+        let start = Instant::now();
+        let mut frames = Vec::new();
+        let mut stats = Vec::new();
+        while start.elapsed() < Duration::from_secs(5) {
+            match next(&mut socket).await {
+                Message::Binary(_) => frames.push(Instant::now()),
+                Message::Text(text) => {
+                    let v: Value = serde_json::from_str(&text).unwrap();
+                    if v["event"] == "stats" {
+                        stats.push(v["data"].clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        request(&mut socket, 6, "transport.pause", json!({})).await;
+        let fps = (frames.len() - 1) as f64 / frames.last().unwrap().duration_since(frames[0]).as_secs_f64();
+        let path = output.join(format!("{mode}.mp4"));
+        let start = Instant::now();
+        let job = request(&mut socket, 7, "export.start", json!({"path":path,"preset":"youtube_1080p","encoder":encoder,"burnCaptions":true})).await;
+        assert_eq!(job["ok"], true, "{job}");
+        let done = job_finished(&mut socket, &job["result"]["jobId"]).await;
+        assert_eq!(done["event"], "job.done", "{done}");
+        let export_seconds = start.elapsed().as_secs_f64();
+        let sample = output.join(format!("{mode}-export.rgb"));
+        let decoded = Command::new("ffmpeg")
+            .args(["-hide_banner", "-loglevel", "error", "-i"])
+            .arg(&path)
+            .args(["-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-y"])
+            .arg(&sample)
+            .status()
+            .unwrap();
+        assert!(decoded.success());
+        let exported = std::fs::read(sample).unwrap();
+        let preview = image::open(output.join(format!("{mode}-preview.jpg"))).unwrap().into_rgb8();
+        assert_eq!(preview.as_raw().len(), exported.len());
+        // Compare the caption region; independent H.264/JPEG compression permits small colour differences.
+        let mut sum = 0u64;
+        let mut count = 0u64;
+        for y in 780..1040 {
+            for x in 480..1440 {
+                for c in 0..3 {
+                    let i = (y * 1920 + x) * 3 + c;
+                    sum += u64::from(preview.as_raw()[i].abs_diff(exported[i]));
+                    count += 1;
+                }
+            }
+        }
+        let mut mae = sum as f64 / count as f64;
+        let mut comparisons = vec![json!({"seconds":0.0,"mae":mae})];
+        for number in [2u32, 5, 27, 32, 62, 90, 1799] {
+            let seconds = f64::from(number) / 30.0;
+            let jpeg = command_frame(&mut socket, 70, "transport.seek", json!({"seconds":seconds})).await;
+            std::fs::write(output.join(format!("{mode}-{number}-preview.jpg")), &jpeg).unwrap();
+            let preview = image::load_from_memory(&jpeg).unwrap().into_rgb8();
+            let decoded = Command::new("ffmpeg")
+                .args(["-hide_banner", "-loglevel", "error", "-ss", &format!("{seconds:.9}"), "-i"])
+                .arg(&path)
+                .args(["-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"])
+                .output()
+                .unwrap();
+            assert!(decoded.status.success());
+            assert_eq!(decoded.stdout.len(), preview.as_raw().len());
+            let mut sum = 0u64;
+            let mut count = 0u64;
+            let mut bright = 0;
+            for y in 780..1040 {
+                for x in 480..1440 {
+                    for c in 0..3 {
+                        let i = (y * 1920 + x) * 3 + c;
+                        sum += u64::from(preview.as_raw()[i].abs_diff(decoded.stdout[i]));
+                        count += 1;
+                        if decoded.stdout[i] > 170 {
+                            bright += 1;
+                        }
+                    }
+                }
+            }
+            assert!(bright > 100, "legenda ausente na exportação {mode}, quadro {number}");
+            let error = sum as f64 / count as f64;
+            mae = mae.max(error);
+            comparisons.push(json!({"seconds":seconds,"mae":error}));
+        }
+        eprintln!("M1.1 {mode}: redraw_ms={redraws:?}; fps={fps:.3}; export_s={export_seconds:.3}; caption_mae={mae:.3}; stats={stats:?}");
+        measurements.push(json!({"mode":mode,"redrawMs":redraws,"fps":fps,"exportSeconds":export_seconds,"mae":mae,"comparisons":comparisons,"stats":stats}));
+    }
+    let srt = output.join("minuto.srt");
+    assert_eq!(request(&mut socket, 8, "captions.exportSrt", json!({"path":srt})).await["ok"], true);
+    let bytes = std::fs::metadata(&srt).unwrap().len();
+    let doc = filmcraft_captions::parse(&std::fs::read(&srt).unwrap(), filmcraft_captions::Format::Srt).unwrap();
+    assert_eq!(doc.cues.len(), 20);
+    eprintln!("M1.1 SRT 60s: {bytes} bytes; 20 frases UTF-8");
+    std::fs::write(
+        output.join("measurements.json"),
+        serde_json::to_vec_pretty(&json!({"modes":measurements,"srtBytes":bytes,"encoder":encoder,"gpu":hello["result"]["gpu"]})).unwrap(),
+    )
+    .unwrap();
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+    assert!(measurements.iter().all(|m| m["mae"].as_f64().unwrap() < 8.0), "prévia/exportação diferentes");
+    assert!(measurements.iter().all(|m| m["fps"].as_f64().unwrap() >= 29.5), "prévia abaixo de 30 qps");
+    assert!(measurements.iter().all(|m| m["redrawMs"].as_array().unwrap().iter().all(|v| v.as_f64().unwrap() < 50.0)), "redesenho excede 50 ms");
+}
+
 #[tokio::test]
 async fn authentication_replacement_errors_and_shutdown() {
     let mut motor = Motor::start();
@@ -99,6 +305,10 @@ async fn authentication_replacement_errors_and_shutdown() {
     let hello = request(&mut first, 1, "hello", json!({})).await;
     assert_eq!(hello["ok"], true);
     assert_eq!(hello["result"]["speech"], true);
+    assert_eq!(hello["result"]["protocol"], 1);
+    let fonts = hello["result"]["fonts"].as_array().unwrap();
+    assert!(fonts.iter().any(|f| f == "Inter"));
+    assert!(fonts.windows(2).all(|v| v[0].as_str().unwrap() < v[1].as_str().unwrap()));
     let encoders = hello["result"]["encoders"].as_array().unwrap();
     assert_eq!(encoders.first().unwrap(), "software");
     assert!(encoders.iter().all(|e| ["software", "nvenc_h264", "nvenc_hevc"].iter().any(|name| e == name)));

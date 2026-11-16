@@ -43,6 +43,8 @@ impl Preset {
 }
 #[derive(Deserialize)]
 pub struct Start {
+    #[serde(default, rename = "burnCaptions")]
+    burn_captions: bool,
     path: String,
     preset: Preset,
     encoder: Encoder,
@@ -84,6 +86,7 @@ impl Exports {
             .tempfile_in(&self.cache)
             .map_err(|_| error("export_io", "Não foi possível criar o arquivo temporário da exportação."))?;
         let mut settings = params.preset.settings();
+        settings.burn_captions = params.burn_captions;
         self.capabilities.apply(params.encoder, &mut settings);
         settings.path = temp.path().to_string_lossy().into_owned();
         settings.output_file = Some(Arc::new(temp.as_file().try_clone().map_err(|_| io_error())?));
@@ -167,7 +170,7 @@ impl Drop for Exports {
 fn progress_event(id: u64, fraction: f64, eta: Option<f64>) -> Value {
     json!({"event":"job.progress","data":{"jobId":id,"kind":"export","fraction":fraction,"etaSeconds":eta}})
 }
-fn publish(temp: tempfile::NamedTempFile, target: &Path, progress: &Progress) -> Result<()> {
+pub(crate) fn publish(temp: tempfile::NamedTempFile, target: &Path, progress: &Progress) -> Result<()> {
     match temp.persist_noclobber(target) {
         Ok(_) => Ok(()),
         Err(failure) if failure.error.kind() == std::io::ErrorKind::CrossesDevices || (cfg!(windows) && failure.error.raw_os_error() == Some(17)) => {

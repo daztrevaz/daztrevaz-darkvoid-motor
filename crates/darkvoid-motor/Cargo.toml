@@ -25,6 +25,8 @@ filmcraft-render = { workspace = true }
 filmcraft-media = { workspace = true }
 filmcraft-gpu = { workspace = true }
 filmcraft-export = { workspace = true }
+filmcraft-captions = { workspace = true }
+filmcraft-text = { workspace = true }
 cpal = "0.16"
 crossbeam-queue = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util"] }

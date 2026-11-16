@@ -174,7 +174,7 @@ struct RawFrame {
 
 fn render(job: &Job, gpu: &mut Option<(filmcraft_gpu::GpuCompositor, GpuInfo)>, metrics: &Metrics) -> Option<RawFrame> {
     let seq = job.project.sequence(job.sequence)?;
-    let opts = RenderOptions { scale: job.config.scale(seq.settings.width, seq.settings.height), ..Default::default() };
+    let opts = RenderOptions { scale: job.config.scale(seq.settings.width, seq.settings.height), captions: true, ..Default::default() };
     let start = Instant::now();
     let rgba = if let Some((compositor, _)) = gpu {
         let plan = filmcraft_render::plan::plan_frame(&job.project, job.sequence, job.time, opts, compositor.caps(), &job.sources);

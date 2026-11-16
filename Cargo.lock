@@ -683,6 +683,7 @@ version = "0.0.1"
 dependencies = [
  "cpal",
  "crossbeam-queue",
+ "filmcraft-captions",
  "filmcraft-engine",
  "filmcraft-export",
  "filmcraft-gpu",
@@ -691,6 +692,7 @@ dependencies = [
  "filmcraft-project",
  "filmcraft-render",
  "filmcraft-speech",
+ "filmcraft-text",
  "filmcraft-time",
  "futures-util",
  "image",

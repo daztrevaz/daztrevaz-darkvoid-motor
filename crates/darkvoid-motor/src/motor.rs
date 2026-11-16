@@ -46,9 +46,11 @@ impl Updates {
 }
 
 pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: watch::Receiver<bool>, data_dir: std::path::PathBuf) {
+    crate::captions::fonts();
     let renderer = Renderer::new(updates.frames.clone(), updates.epoch.clone());
     let ids = Arc::new(AtomicU64::new(1));
     let mut motor = Motor {
+        cache: data_dir.join("cache"),
         exports: Exports::new(data_dir.join("cache"), updates.jobs.clone(), ids.clone()),
         speech: crate::speech::Speech::new(data_dir.join("modelos"), updates.jobs.clone(), ids),
         session: Session::new(Arc::new(FsServices)),
@@ -108,6 +110,7 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
 }
 
 struct Motor {
+    cache: std::path::PathBuf,
     exports: Exports,
     speech: crate::speech::Speech,
     session: Session,
@@ -121,13 +124,26 @@ struct Motor {
 impl Motor {
     fn execute(&mut self, command: &str, params: Value) -> Result<Value> {
         match command {
-            "hello" => {
-                Ok(json!({"version":VERSION,"gpu":self.renderer.gpu,"encoders":self.exports.capabilities.names(),"speech":filmcraft_speech::available()}))
-            }
+            "hello" => Ok(
+                json!({"version":VERSION,"protocol":1,"fonts":crate::captions::fonts(),"gpu":self.renderer.gpu,"encoders":self.exports.capabilities.names(),"speech":filmcraft_speech::available()}),
+            ),
             "speech.models" => Ok(self.speech.list()),
             "speech.download" => self.speech.download(field(params)?),
             "speech.transcribe" => self.speech.transcribe(&self.session, field(params)?),
             "export.start" => self.exports.start(&self.session, field(params)?),
+            "captions.set" => {
+                crate::captions::set(&mut self.session, params)?;
+                self.invalidate();
+                self.submit();
+                Ok(json!({}))
+            }
+            "captions.clear" => {
+                crate::captions::clear(&mut self.session)?;
+                self.invalidate();
+                self.submit();
+                Ok(json!({}))
+            }
+            "captions.exportSrt" => crate::captions::export_srt(&self.session, field(params)?, &self.cache),
             "job.cancel" => {
                 let params: crate::exports::Cancel = field(params)?;
                 if self.speech.cancel(params.job_id) { Ok(json!({})) } else { self.exports.cancel(params) }
