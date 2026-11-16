@@ -91,6 +91,172 @@ fn fixture() -> String {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/padrao.mp4").to_string_lossy().into_owned()
 }
 
+#[tokio::test]
+async fn audio_peaks_validation_silence_cache_and_file_change() {
+    let mut motor = Motor::start();
+    let mut socket = motor.connect().await;
+    let absent = request(&mut socket, 1, "audio.peaks", json!({"buckets":20})).await;
+    assert_eq!(absent["error"]["code"], "no_session");
+    assert_eq!(absent["error"]["message"], "Abra um vídeo antes de calcular a onda de áudio.");
+    let source = motor._dir.path().join("source.mp4");
+    std::fs::copy(fixture(), &source).unwrap();
+    assert_eq!(request(&mut socket, 2, "session.open", json!({"path":source,"format":"source"})).await["ok"], true);
+    for buckets in [json!(0), json!(20001), json!(-1), json!(1.5), json!("20"), Value::Null] {
+        assert_eq!(request(&mut socket, 3, "audio.peaks", json!({"buckets":buckets})).await["error"]["code"], "invalid_params");
+    }
+    let mut first = None;
+    for buckets in [1, 20, 20000, 20] {
+        let result = request(&mut socket, 4, "audio.peaks", json!({"buckets":buckets})).await;
+        assert_eq!(result["ok"], true, "{result}");
+        let peaks = result["result"]["peaks"].as_array().unwrap();
+        assert_eq!(peaks.len(), buckets);
+        assert!(peaks.iter().all(|v| (0.0..=1.0).contains(&v.as_f64().unwrap())));
+        assert!(peaks.iter().any(|v| v.as_f64().unwrap() > 0.01));
+        if buckets == 20 {
+            if let Some(old) = &first {
+                assert_eq!(&result, old);
+            } else {
+                first = Some(result);
+            }
+        }
+    }
+    let caches =
+        || std::fs::read_dir(motor._dir.path().join("cache")).unwrap().flatten().filter(|f| f.file_name().to_string_lossy().starts_with("peaks-v1-")).count();
+    assert_eq!(caches(), 1);
+    let silent = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sem-audio.mp4");
+    std::fs::copy(silent, &source).unwrap();
+    let result = request(&mut socket, 5, "audio.peaks", json!({"buckets":20000})).await;
+    assert_eq!(result["ok"], true, "{result}");
+    assert!(result["result"]["peaks"].as_array().unwrap().iter().all(|v| v == 0.0));
+    assert_eq!(caches(), 2);
+    let multiple = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dois-audios.mp4");
+    assert_eq!(request(&mut socket, 6, "session.open", json!({"path":multiple,"format":"source"})).await["ok"], true);
+    let result = request(&mut socket, 7, "audio.peaks", json!({"buckets":1})).await;
+    assert_eq!(result["ok"], true, "{result}");
+    assert!(result["result"]["peaks"][0].as_f64().unwrap() > 0.6, "deve incluir a segunda faixa de áudio");
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+}
+
+#[tokio::test]
+#[ignore = "M1.2: requer MOTOR_PEAKS_MEDIA sintético de 10 min, MOTOR_PEAKS_OUTPUT e áudio padrão."]
+async fn audio_peaks_benchmark_ten_minutes() {
+    let media = std::env::var("MOTOR_PEAKS_MEDIA").unwrap();
+    let output = std::path::PathBuf::from(std::env::var("MOTOR_PEAKS_OUTPUT").unwrap());
+    std::fs::create_dir_all(&output).unwrap();
+    let cache = output.join("single");
+    std::fs::create_dir_all(&cache).unwrap();
+    let mut motor = Motor::start_with_data_dir(Some(&cache));
+    let mut socket = motor.connect().await;
+    let open = request(&mut socket, 1, "session.open", json!({"path":media,"format":"source"})).await;
+    assert_eq!(open["ok"], true, "{open}");
+    assert!((open["result"]["duration"].as_f64().unwrap() - 600.0).abs() < 0.1);
+    assert_eq!(open["result"]["width"], 1920);
+    let mut timings = Vec::new();
+    let mut reference = Value::Null;
+    for (name, buckets) in [("cold", 20000), ("warm", 20000), ("newBuckets", 1973), ("warmAgain", 1973)] {
+        let start = Instant::now();
+        let response = request(&mut socket, 2, "audio.peaks", json!({"buckets":buckets})).await;
+        let ms = start.elapsed().as_secs_f64() * 1000.0;
+        assert_eq!(response["ok"], true, "{response}");
+        assert_eq!(response["result"]["peaks"].as_array().unwrap().len(), buckets);
+        assert!(response["result"]["peaks"].as_array().unwrap().iter().any(|p| p.as_f64().unwrap() > 0.25));
+        if name == "cold" {
+            reference = response["result"].clone();
+        }
+        timings.push(json!({"kind":name,"ms":ms,"buckets":buckets}));
+        eprintln!("M1.2 {name}: {ms:.3} ms");
+    }
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+    let files: Vec<_> = std::fs::read_dir(cache.join("cache")).unwrap().flatten().collect();
+    assert_eq!(files.len(), 1);
+    let cache_bytes = files[0].metadata().unwrap().len();
+    let written = files[0].metadata().unwrap().modified().unwrap();
+    let mut motor = Motor::start_with_data_dir(Some(&cache));
+    let mut socket = motor.connect().await;
+    request(&mut socket, 1, "session.open", json!({"path":media,"format":"source"})).await;
+    let start = Instant::now();
+    let response = request(&mut socket, 2, "audio.peaks", json!({"buckets":20000})).await;
+    let disk_ms = start.elapsed().as_secs_f64() * 1000.0;
+    assert_eq!(response["result"], reference, "{response}");
+    assert_eq!(files[0].metadata().unwrap().modified().unwrap(), written);
+    eprintln!("M1.2 restart/disk: {disk_ms:.3} ms; cache: {cache_bytes} bytes");
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+
+    let concurrent = output.join("concurrent");
+    std::fs::create_dir_all(&concurrent).unwrap();
+    let mut motor = Motor::start_with_data_dir(Some(&concurrent));
+    let mut socket = motor.connect().await;
+    request(&mut socket, 1, "session.open", json!({"path":media,"format":"source"})).await;
+    frame(&mut socket, 0.0).await;
+    assert_eq!(request(&mut socket, 2, "transport.play", json!({})).await["ok"], true);
+    let job = request(&mut socket, 3, "export.start", json!({"path":output.join("concurrent.mp4"),"preset":"youtube_1080p","encoder":"nvenc_h264"})).await;
+    assert_eq!(job["ok"], true, "{job}");
+    let start = Instant::now();
+    for (id, cmd, params) in [(4, "audio.peaks", json!({"buckets":20000})), (5, "audio.peaks", json!({"buckets":1973})), (6, "hello", json!({}))] {
+        socket.send(Message::Text(json!({"id":id,"cmd":cmd,"params":params}).to_string().into())).await.unwrap();
+    }
+    let mut done = 0;
+    let mut frames = 0;
+    let mut last = Instant::now();
+    let mut gap = 0.0f64;
+    let mut hello_ms = None;
+    let mut peak_ms = Vec::new();
+    let mut progress = 0;
+    let mut audio_seconds = 0.0f64;
+    while done < 2 || start.elapsed() < Duration::from_secs(3) || hello_ms.is_none() {
+        match next(&mut socket).await {
+            Message::Binary(_) => {
+                frames += 1;
+                let now = Instant::now();
+                gap = gap.max(now.duration_since(last).as_secs_f64() * 1000.0);
+                last = now;
+            }
+            Message::Text(text) => {
+                let value: Value = serde_json::from_str(&text).unwrap();
+                if value["id"] == 4 || value["id"] == 5 {
+                    assert_eq!(value["ok"], true, "{value}");
+                    done += 1;
+                    peak_ms.push(start.elapsed().as_secs_f64() * 1000.0);
+                }
+                if value["id"] == 6 {
+                    assert_eq!(value["ok"], true);
+                    hello_ms = Some(start.elapsed().as_secs_f64() * 1000.0);
+                }
+                if value["event"] == "job.progress" {
+                    progress += 1;
+                }
+                if value["event"] == "state" {
+                    audio_seconds = audio_seconds.max(value["data"]["seconds"].as_f64().unwrap());
+                }
+            }
+            _ => {}
+        }
+        assert!(start.elapsed() < Duration::from_secs(30));
+    }
+    request(&mut socket, 7, "transport.pause", json!({})).await;
+    assert_eq!(request(&mut socket, 8, "job.cancel", json!({"jobId":job["result"]["jobId"]})).await["ok"], true);
+    assert_eq!(job_finished(&mut socket, &job["result"]["jobId"]).await["event"], "job.error");
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+    assert_eq!(std::fs::read_dir(concurrent.join("cache")).unwrap().count(), 1, "cálculo compartilhado deve criar somente um cache");
+    eprintln!(
+        "M1.2 concurrent: peaks_ms={peak_ms:?}; hello_ms={hello_ms:?}; frames={frames}; max_gap_ms={gap:.3}; progress={progress}; audio_s={audio_seconds:.3}"
+    );
+    std::fs::write(
+        output.join("measurements.json"),
+        serde_json::to_vec_pretty(&json!({"timings":timings,"diskMs":disk_ms,"cacheBytes":cache_bytes,
+        "concurrent":{"peaksMs":peak_ms,"helloMs":hello_ms,"frames":frames,"maxGapMs":gap,"exportProgressEvents":progress,"audioSeconds":audio_seconds}}))
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(timings[0]["ms"].as_f64().unwrap() < 3000.0, "primeiro cálculo excede 3 s");
+    assert!(timings[1]["ms"].as_f64().unwrap() < 50.0 && timings[2]["ms"].as_f64().unwrap() < 50.0, "cache não foi instantâneo");
+    assert!(frames > 20 && gap < 300.0 && audio_seconds > 2.5 && progress > 0 && hello_ms.unwrap() < 100.0, "cálculo bloqueou prévia, comandos ou exportação");
+}
+
 async fn caption_frame(socket: &mut Socket, id: u64, params: Value) -> Vec<u8> {
     command_frame(socket, id, "captions.set", params).await
 }

@@ -4,6 +4,7 @@ mod captions;
 mod encoding;
 mod exports;
 mod motor;
+mod peaks;
 mod preview;
 mod protocol;
 mod server;

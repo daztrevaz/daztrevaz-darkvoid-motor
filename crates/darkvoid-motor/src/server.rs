@@ -3,7 +3,7 @@ use crate::{
     motor::{self, Command, Updates},
     protocol,
 };
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{FutureExt, SinkExt, StreamExt, future::BoxFuture, stream::FuturesUnordered};
 use serde_json::{Value, json};
 use std::{
     io::{self, Write},
@@ -60,6 +60,7 @@ pub async fn run(token: String, data_dir: PathBuf, stop: watch::Sender<bool>, mu
     Ok(())
 }
 
+#[derive(Clone)]
 struct Client {
     commands: mpsc::Sender<Command>,
     updates: Updates,
@@ -94,23 +95,32 @@ async fn connection(stream: TcpStream, token: String, client: Client) {
     let mut state = client.updates.state.subscribe();
     let mut stats = client.updates.stats.subscribe();
     let mut jobs = client.updates.jobs.subscribe();
+    let mut pending: FuturesUnordered<BoxFuture<'static, Option<(Message, bool)>>> = FuturesUnordered::new();
     loop {
         let mut shutdown = false;
         let outgoing = tokio::select! {
             biased;
             _ = stopped.changed() => break,
             _ = owner.changed() => break,
+            reply = pending.next(), if !pending.is_empty() => {
+                let Some(Some((message, should_stop))) = reply else { break; };
+                shutdown = should_stop;
+                message
+            }
             incoming = socket.next() => {
                 match incoming {
                     Some(Ok(Message::Text(text))) => {
-                        let reply = tokio::select! {
-                            reply = handle(&text, &client, id) => reply,
-                            _ = stopped.changed() => break,
-                            _ = owner.changed() => break,
-                        };
-                        let Some((message, should_stop)) = reply else { break; };
-                        shutdown = should_stop;
-                        message
+                        if pending.len() >= 16 {
+                            let reply = match protocol::parse(&text) {
+                                Ok(request) => protocol::response(request.id, Err(protocol::error("requests_busy", "Aguarde as respostas dos pedidos em andamento."))),
+                                Err(reply) => reply,
+                            };
+                            Message::Text(reply.to_string().into())
+                        } else {
+                            let client = client.clone();
+                            pending.push(async move { handle(&text, &client, id).await }.boxed());
+                            continue;
+                        }
                     }
                     Some(Ok(Message::Ping(bytes))) => Message::Pong(bytes),
                     Some(Ok(Message::Pong(_))) => continue,
@@ -169,4 +179,34 @@ async fn handle(text: &str, client: &Client, id: u64) -> Option<(Message, bool)>
         }
     };
     Some((Message::Text(reply.to_string().into()), shutdown))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn pending_replies_stay_bounded_and_shutdown_does_not_wait_for_them() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (commands, mut held) = mpsc::channel(16);
+        let stop = watch::channel(false).0;
+        let client = Client { commands, updates: Updates::new(), stop: stop.clone(), owner: watch::channel(0).0 };
+        let worker = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            connection(stream, "test".into(), client).await;
+        });
+        let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{port}/?token=test")).await.unwrap();
+        for id in 0..17 {
+            socket.send(Message::Text(json!({"id":id,"cmd":"hello"}).to_string().into())).await.unwrap();
+        }
+        let reply = timeout(Duration::from_secs(2), socket.next()).await.unwrap().unwrap().unwrap();
+        let Message::Text(text) = reply else { panic!("esperava resposta JSON") };
+        let value: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["id"], 16);
+        assert_eq!(value["error"]["code"], "requests_busy");
+        // An actor consumes commands without necessarily replying yet. Leave room for Disconnect.
+        let _unanswered = held.try_recv().unwrap();
+        stop.send(true).unwrap();
+        timeout(Duration::from_secs(2), worker).await.expect("encerra mesmo com pedidos sem resposta").unwrap();
+    }
 }
