@@ -52,7 +52,10 @@ pub struct Peaks {
     stop: Arc<AtomicBool>,
 }
 impl Peaks {
-    pub fn new(directory: PathBuf) -> Self {
+    pub fn stop(&self) {
+        self.stop.store(true, Ordering::Release);
+    }
+    pub fn new(cache: crate::cache::Cache) -> Self {
         let (tx, rx) = mpsc::sync_channel::<Request>(16);
         let stop = Arc::new(AtomicBool::new(false));
         let cancelled = stop.clone();
@@ -73,14 +76,15 @@ impl Peaks {
                             Input::File(media) => media,
                         };
                         let key = fingerprint(media)?;
-                        if cached.as_ref().is_none_or(|c| c.key != key) {
-                            cached = None;
-                            let path = directory.join(format!("peaks-v1-{key:016x}.bin"));
-                            cached = Some(Envelope::load(&path, key, media.duration).or_else(|_| calculate(media, &path, key, &cancelled))?);
-                        }
-                        let envelope = cached.as_mut().ok_or_else(failed)?;
-                        let peaks = envelope.buckets(request.buckets)?;
-                        Ok(json!({"peaks":peaks}))
+                        cache.entry(&format!("peaks-v1-{key:016x}.bin"), |path| {
+                            if cached.as_ref().is_none_or(|c| c.key != key || !path.is_file()) {
+                                cached = None;
+                                cached = Some(Envelope::load(path, key, media.duration).or_else(|_| calculate(media, path, key, &cancelled))?);
+                            }
+                            let envelope = cached.as_mut().ok_or_else(failed)?;
+                            let peaks = envelope.buckets(request.buckets)?;
+                            Ok(json!({"peaks":peaks}))
+                        })
                     }))
                     .unwrap_or_else(|_| Err(failed()));
                     let _ = request.reply.send(protocol::response(request.id, result));
@@ -144,7 +148,7 @@ fn timeline_peaks(snapshot: &crate::mix::Snapshot, buckets: usize, stop: &Atomic
 }
 impl Drop for Peaks {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Release);
+        self.stop();
         self.queue.take();
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
@@ -423,7 +427,7 @@ mod tests {
         let path = dir.path().join("source.wav");
         wav(&path, &[[0.8, -0.8]; 8000], 8000);
         let media = Media { path, duration: Tick::from_seconds_f64(1.0) };
-        let mut worker = Peaks::new(dir.path().into());
+        let mut worker = Peaks::new(crate::cache::Cache::new(dir.path().into()).unwrap());
         for buckets in [3, 7, 20000] {
             let (tx, rx) = oneshot::channel();
             worker.request(Some(media.clone()), json!({"buckets":buckets}), json!(buckets), tx);
@@ -435,7 +439,7 @@ mod tests {
         assert_eq!(cached.len(), 1);
         let written = cached[0].metadata().unwrap().modified().unwrap();
         drop(worker);
-        worker = Peaks::new(dir.path().into());
+        worker = Peaks::new(crate::cache::Cache::new(dir.path().into()).unwrap());
         let (tx, rx) = oneshot::channel();
         worker.request(Some(media), json!({"buckets":1}), json!(1), tx);
         assert_eq!(rx.await.unwrap()["result"]["peaks"][0], json!(0.8f32));

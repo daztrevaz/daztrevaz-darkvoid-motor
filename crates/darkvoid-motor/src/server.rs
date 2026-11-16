@@ -28,12 +28,13 @@ use tokio_tungstenite::{
 pub async fn run(token: String, data_dir: PathBuf, stop: watch::Sender<bool>, mut stopped: watch::Receiver<bool>) -> io::Result<()> {
     // Nenhuma persistência automática do engine fora da pasta autorizada.
     std::fs::create_dir_all(data_dir.join("cache"))?;
+    let cache = crate::cache::Cache::new(data_dir.join("cache")).map_err(|e| io::Error::other(e.message))?;
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
     let (commands, rx) = mpsc::channel(16);
     let updates = Updates::new();
     let actor_updates = updates.clone();
     let actor_stop = stopped.clone();
-    let worker = std::thread::spawn(move || motor::run(rx, actor_updates, actor_stop, data_dir));
+    let worker = std::thread::spawn(move || motor::run(rx, actor_updates, actor_stop, data_dir, cache));
     let owner = watch::channel(0u64).0;
     println!("{}", json!({"event":"ready", "port":listener.local_addr()?.port(), "version":VERSION}));
     io::stdout().flush()?;

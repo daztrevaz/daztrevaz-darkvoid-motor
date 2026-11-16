@@ -3,7 +3,7 @@ use crate::protocol::{Result, error};
 use filmcraft_engine::Session;
 use filmcraft_project::{
     Caption, CaptionFormat, CaptionTrack, ClipId, TrackId,
-    caption_animation::{AnimatedCaptionStyle, AnimatedCaptions, AnimatedCue, CaptionWord},
+    caption_animation::{AnimatedCaptionStyle, AnimatedCaptions, AnimatedCue, CaptionOverride, CaptionWord},
 };
 use filmcraft_time::Tick;
 use serde::Deserialize;
@@ -44,6 +44,7 @@ struct Cue {
     start: f64,
     end: f64,
     words: Vec<Word>,
+    r#override: Option<CaptionOverride>,
 }
 #[derive(Deserialize)]
 struct Word {
@@ -91,6 +92,9 @@ fn track(params: Value, duration: Tick) -> Result<CaptionTrack> {
     let mut cues = Vec::with_capacity(p.cues.len());
     let mut previous = Tick::ZERO;
     for (i, c) in p.cues.into_iter().enumerate() {
+        if c.r#override.as_ref().is_some_and(|overrides| !valid_style(&overrides.apply(&p.style))) {
+            return Err(invalid());
+        }
         if !c.start.is_finite()
             || !c.end.is_finite()
             || c.start < 0.0
@@ -132,7 +136,7 @@ fn track(params: Value, duration: Tick) -> Result<CaptionTrack> {
             return Err(invalid());
         }
         track.captions.push(Caption { id: ClipId(i as u64 + 1), start, duration: end - start, text, speaker: None, cue_id: None, settings: String::new() });
-        cues.push(AnimatedCue { start, end, words });
+        cues.push(AnimatedCue { start, end, words, r#override: c.r#override });
     }
     track.animation = Some(AnimatedCaptions { cues, style: p.style });
     Ok(track)
@@ -205,5 +209,32 @@ mod tests {
         let mut p = cases::captions("phrase", 60);
         p["cues"][0]["words"][0]["text"] = json!("\n");
         assert_eq!(track(p, duration).unwrap_err().code, "captions_invalid");
+    }
+    #[test]
+    fn validates_overrides_before_replacing_any_captions() {
+        let duration = Tick::from_seconds_f64(6.0);
+        for overrides in [json!({}), json!({"size":120}), json!({"position":{"x":0.2,"y":0.3}}), json!({"maxWidth":0.4})] {
+            let mut p = cases::captions("phrase", 6);
+            p["cues"][0]["override"] = overrides;
+            let t = track(p, duration).unwrap();
+            let animation = t.animation.unwrap();
+            assert!(animation.cues[0].r#override.is_some());
+            assert!(animation.cues[1].r#override.is_none());
+            assert_eq!(animation.style.size, 54.0);
+        }
+        for overrides in [
+            json!({"size":0}),
+            json!({"size":257}),
+            json!({"size":"54"}),
+            json!({"maxWidth":0}),
+            json!({"maxWidth":1.1}),
+            json!({"position":{"x":-0.1,"y":0.5}}),
+            json!({"position":{"x":0.5}}),
+            json!({"color":"#FFFFFF"}),
+        ] {
+            let mut p = cases::captions("phrase", 6);
+            p["cues"][1]["override"] = overrides;
+            assert_eq!(track(p, duration).unwrap_err().code, "captions_invalid");
+        }
     }
 }

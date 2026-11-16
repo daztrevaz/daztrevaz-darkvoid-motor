@@ -46,7 +46,13 @@ pub fn overlay(data: &AnimatedCaptions, t: Tick, w: usize, h: usize) -> Option<O
     if t >= cue.end {
         return None;
     }
-    let s = &data.style;
+    let resolved;
+    let s = if let Some(overrides) = &cue.r#override {
+        resolved = overrides.apply(&data.style);
+        &resolved
+    } else {
+        &data.style
+    };
     let current = cue.words.partition_point(|word| word.start <= t).checked_sub(1);
     let active = current.filter(|&i| t < cue.words[i].end);
     let indices: Vec<usize> = if s.mode == CaptionMode::Word { vec![current?] } else { (0..cue.words.len()).collect() };
@@ -161,6 +167,7 @@ mod tests {
                     CaptionWord { text: "Olá".into(), start: Tick::ZERO, end: Tick::from_seconds_f64(0.8) },
                     CaptionWord { text: "mundo".into(), start: Tick::from_seconds_f64(1.0), end: Tick::from_seconds_f64(2.0) },
                 ],
+                r#override: None,
             }],
             style: AnimatedCaptionStyle {
                 mode,
@@ -183,6 +190,38 @@ mod tests {
     }
     fn red(o: &Overlay) -> usize {
         o.px.as_chunks::<4>().0.iter().filter(|p| p[0] > 0.2 && p[1] < 0.01).count()
+    }
+    #[test]
+    fn cue_overrides_match_resolved_style_and_do_not_leak() {
+        use filmcraft_project::caption_animation::CaptionOverride;
+        for mode in [CaptionMode::Phrase, CaptionMode::Word, CaptionMode::Karaoke, CaptionMode::Pop] {
+            let mut data = sample(mode);
+            let original = data.style.clone();
+            let mut following = data.cues[0].clone();
+            following.start = Tick::from_seconds_f64(3.0);
+            following.end = Tick::from_seconds_f64(6.0);
+            for word in &mut following.words {
+                word.start += Tick::from_seconds_f64(3.0);
+                word.end += Tick::from_seconds_f64(3.0);
+            }
+            data.cues.push(following);
+            let baseline = at(&data, 0.08);
+            for overrides in [
+                CaptionOverride { size: Some(100.0), ..Default::default() },
+                CaptionOverride { position: Some(CaptionPosition { x: 0.2, y: 0.25 }), ..Default::default() },
+                CaptionOverride { max_width: Some(0.1), ..Default::default() },
+                CaptionOverride { size: Some(90.0), position: Some(CaptionPosition { x: 0.3, y: 0.2 }), max_width: Some(0.2) },
+            ] {
+                let mut resolved = data.clone();
+                resolved.style = overrides.apply(&original);
+                resolved.cues[0].r#override = None;
+                data.cues[0].r#override = Some(overrides);
+                assert!(at(&data, 0.08) == at(&resolved, 0.08), "override deve equivaler ao estilo resolvido");
+                assert!(at(&data, 3.08) == baseline, "override não deve afetar a frase seguinte");
+                assert_eq!(data.style, original);
+            }
+            assert_eq!(at(&sample(mode), 0.08), baseline);
+        }
     }
     #[test]
     fn modes_boundaries_gaps_and_pop_curve() {
