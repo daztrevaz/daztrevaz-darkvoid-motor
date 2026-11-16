@@ -1,7 +1,7 @@
 [package]
 name = "darkvoid-motor"
 description = "Motor DARKVOID: processo auxiliar do editor do DarkFlow (prévia, reprodução, exportação e legendas) sobre o motor do FilmCraft"
-version = "0.0.1"
+version = "0.2.0"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
