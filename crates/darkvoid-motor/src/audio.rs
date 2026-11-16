@@ -42,7 +42,7 @@ impl Audio {
         let pool = Arc::new(MediaPool::default());
         let services = session.services.clone();
         let mut sources = pool.provider(project.clone(), services.clone());
-        let queue = Arc::new(ArrayQueue::new(rate as usize / 2));
+        let queue = Arc::new(ArrayQueue::new(rate as usize / 5));
         let mut cursor = origin.to_units_floor(rate as i64);
         fill(&project, sequence, &sources, &queue, &mut cursor, rate as usize / 5);
         let clock = Arc::new(AtomicU64::new(0));
@@ -70,9 +70,21 @@ impl Audio {
         let (projects, mut updated) = tokio::sync::watch::channel(project.clone());
         let producer = thread::spawn(move || {
             while !stopped.load(Ordering::Acquire) {
-                if updated.has_changed().unwrap_or(false) {
+                if updated.has_changed().unwrap_or(false) && queue.capacity() - queue.len() >= rate as usize / 200 {
+                    // A fila já entregue permanece contínua. Faz a troca no próximo
+                    // trecho produzido, com 5 ms de interpolação entre snapshots.
+                    let count = (queue.capacity() - queue.len()).min(rate as usize / 200);
+                    let old = filmcraft_render::audio::mix_sequence(&project, project.sequence(sequence).expect("sequência de áudio"), cursor, count, &sources);
                     project = updated.borrow_and_update().clone();
                     sources = pool.provider(project.clone(), services.clone());
+                    let new = filmcraft_render::audio::mix_sequence(&project, project.sequence(sequence).expect("sequência de áudio"), cursor, count, &sources);
+                    for i in 0..count {
+                        let weight = (i + 1) as f32 / count as f32;
+                        let frame = [0, 1].map(|ch| old.channels[ch][i] * (1.0 - weight) + new.channels[ch][i] * weight);
+                        if queue.push(frame).is_ok() {
+                            cursor += 1;
+                        }
+                    }
                 }
                 if queue.capacity() - queue.len() >= 1024 {
                     fill(&project, sequence, &sources, &queue, &mut cursor, 1024);
@@ -184,6 +196,44 @@ fn build<T: SizedSample + FromSample<f32>>(device: &cpal::Device, config: &cpal:
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "Comparação M2.2: requer artefatos de audio_timeline_acceptance em MOTOR_M22_OUTPUT e FFmpeg."]
+    fn preview_queue_matches_exported_mix() {
+        let output = std::path::PathBuf::from(std::env::var("MOTOR_M22_OUTPUT").expect("MOTOR_M22_OUTPUT"));
+        let mut session = Session::new(Arc::new(filmcraft_engine::FsServices));
+        let mut clips = Vec::new();
+        for i in 0..3 {
+            clips.push(serde_json::json!({"id":format!("v{i}"),"media":output.join(format!("video-{i}.mp4")),"track":"V1","start":i as f64*2.0,"in":0.25,"out":2.25,"volume":1,"fadeIn":0,"fadeOut":0}));
+        }
+        clips
+            .push(serde_json::json!({"id":"music","media":output.join("music.wav"),"track":"A1","start":0,"in":0,"out":6,"volume":0.3,"fadeIn":1,"fadeOut":1}));
+        crate::timeline::Timeline::default().set(&mut session, serde_json::json!({"format":"horizontal","clips":clips})).unwrap();
+        let sequence = session.state.active_sequence.unwrap();
+        let sources = session.media.provider(session.project.clone(), session.services.clone());
+        let queue = ArrayQueue::new(1024);
+        let mut cursor = 0;
+        let mut preview = Vec::new();
+        while cursor < 6 * 48000 {
+            let count = (6 * 48000 - cursor).min(1024) as usize;
+            fill(&session.project, sequence, &sources, &queue, &mut cursor, count);
+            while let Some(frame) = queue.pop() {
+                preview.extend(frame);
+            }
+        }
+        let decoded = std::process::Command::new("ffmpeg")
+            .args(["-hide_banner", "-loglevel", "error", "-i"])
+            .arg(output.join("timeline.mp4"))
+            .args(["-vn", "-ac", "2", "-ar", "48000", "-f", "f32le", "pipe:1"])
+            .output()
+            .unwrap();
+        assert!(decoded.status.success());
+        let exported: Vec<_> = decoded.stdout.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes(*b)).collect();
+        assert!(exported.len() >= preview.len());
+        let rmse = (preview.iter().zip(&exported).map(|(a, b)| f64::from(a - b).powi(2)).sum::<f64>() / preview.len() as f64).sqrt();
+        assert!(rmse < 0.001, "RMSE prévia/exportação {rmse}");
+        eprintln!("M2.2 fila da prévia versus AAC exportado: RMSE {rmse:.9}, {} amostras estéreo, atraso 0 amostras", preview.len() / 2);
+        std::fs::write(output.join("preview-export.json"), serde_json::json!({"rmse":rmse,"stereoFrames":preview.len()/2,"lagSamples":0}).to_string()).unwrap();
+    }
     #[test]
     fn sample_clock_uses_exact_ticks() {
         let rate = 48_000;

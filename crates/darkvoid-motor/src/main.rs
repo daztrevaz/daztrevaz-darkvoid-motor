@@ -3,6 +3,7 @@ mod audio;
 mod captions;
 mod encoding;
 mod exports;
+mod mix;
 mod motor;
 mod peaks;
 mod preview;

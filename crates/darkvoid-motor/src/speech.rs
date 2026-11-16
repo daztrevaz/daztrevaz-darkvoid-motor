@@ -46,7 +46,7 @@ impl Language {
 }
 #[derive(Default)]
 struct Progress {
-    cancel: AtomicBool,
+    cancel: Arc<AtomicBool>,
     fraction: AtomicU32,
 }
 impl Progress {
@@ -104,21 +104,12 @@ impl Speech {
     pub fn transcribe(&mut self, session: &Session, params: Transcribe) -> Result<Value> {
         let model = find(&params.model)?;
         let sequence = session.active_sequence().ok_or_else(|| error("no_session", "Abra um vídeo antes de transcrever."))?;
-        let item = sequence
-            .audio_tracks
-            .iter()
-            .flat_map(|track| track.items.iter())
-            .find(|item| item.enabled)
-            .map(|item| item.item)
-            .ok_or_else(|| error("media_no_audio", "O vídeo da sessão não contém áudio."))?;
-        let source = session
-            .media
-            .own_source(&session.project, item, &*session.services)
-            .ok_or_else(|| error("media_unavailable", "Não foi possível abrir o áudio da sessão."))?;
-        if !source.info().has_audio() {
+        let has_audio = sequence.audio_tracks.iter().flat_map(|track| track.items.iter()).any(|item| item.enabled);
+        if !has_audio {
             return Err(error("media_no_audio", "O vídeo da sessão não contém áudio."));
         }
-        let duration = source.info().duration;
+        let snapshot = crate::mix::Snapshot::new(session)?;
+        let duration = snapshot.duration;
         let models_dir = self.directory.clone();
         // Não executa download. A verificação completa do modelo acontece no worker.
         let model_path = models::model_dir(&models_dir, model);
@@ -135,17 +126,16 @@ impl Speech {
                 return Err(protocol::invalid());
             }
             let mut mono = Vec::with_capacity(sample_count);
+            let read = snapshot.reader(filmcraft_speech::SAMPLE_RATE);
             // Blocos limitados: evita pedir uma hora de áudio ao decoder de uma só vez.
             while mono.len() < sample_count {
                 progress.check()?;
                 let count = (sample_count - mono.len()).min(filmcraft_speech::SAMPLE_RATE as usize);
-                let audio = source
-                    .audio(mono.len() as i64, count, filmcraft_speech::SAMPLE_RATE)
-                    .map_err(|_| error("audio_decode_failed", "Não foi possível decodificar o áudio para transcrição."))?;
-                if audio.frames() != count || audio.channels.is_empty() {
+                let channels = filmcraft_media::cancel::with_cancel(&progress.cancel, || read(mono.len() as i64, count));
+                if channels.is_empty() || channels.iter().any(|c| c.len() != count) {
                     return Err(error("audio_decode_failed", "O áudio decodificado está incompleto."));
                 }
-                mono.extend(filmcraft_speech::downmix(&audio.channels));
+                mono.extend(filmcraft_speech::downmix(&channels));
                 progress.update(0.05 * mono.len() as f32 / sample_count as f32);
             }
             let options = filmcraft_speech::Options { language: params.language.code(), diarize: false, ..Default::default() };
