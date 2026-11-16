@@ -1,5 +1,6 @@
 //! Processo auxiliar local do editor DarkFlow.
 mod audio;
+mod cache;
 mod captions;
 mod encoding;
 mod exports;
@@ -10,6 +11,7 @@ mod preview;
 mod protocol;
 mod server;
 mod speech;
+mod thumbs;
 mod timeline;
 
 use std::{io::Read, path::PathBuf, process::ExitCode};

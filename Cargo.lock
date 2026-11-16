@@ -681,6 +681,7 @@ dependencies = [
 name = "darkvoid-motor"
 version = "0.2.0"
 dependencies = [
+ "base64",
  "cpal",
  "crossbeam-queue",
  "filmcraft-captions",

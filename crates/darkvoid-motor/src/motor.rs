@@ -45,15 +45,16 @@ impl Updates {
     }
 }
 
-pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: watch::Receiver<bool>, data_dir: std::path::PathBuf) {
+pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: watch::Receiver<bool>, data_dir: std::path::PathBuf, cache: crate::cache::Cache) {
     crate::captions::fonts();
     let renderer = Renderer::new(updates.frames.clone(), updates.epoch.clone());
     let ids = Arc::new(AtomicU64::new(1));
     let mut motor = Motor {
-        peaks: crate::peaks::Peaks::new(data_dir.join("cache")),
+        peaks: crate::peaks::Peaks::new(cache.clone()),
+        thumbs: crate::thumbs::Thumbs::new(cache),
         peak_media: None,
-        cache: data_dir.join("cache"),
-        exports: Exports::new(data_dir.join("cache"), updates.jobs.clone(), ids.clone()),
+        work_dir: data_dir.clone(),
+        exports: Exports::new(data_dir.clone(), updates.jobs.clone(), ids.clone()),
         speech: crate::speech::Speech::new(data_dir.join("modelos"), updates.jobs.clone(), ids),
         session: Session::new(Arc::new(FsServices)),
         timeline: crate::timeline::Timeline::default(),
@@ -73,7 +74,9 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
         }
         match commands.try_recv() {
             Ok(Command::Request(client, request, reply)) if client == motor.updates.active_client.load(Ordering::Acquire) => {
-                if request.cmd == "audio.peaks" {
+                if request.cmd == "media.thumbs" {
+                    motor.thumbs.request(request.params, request.id, reply);
+                } else if request.cmd == "audio.peaks" {
                     if request.params.get("media").is_none() && !motor.timeline.is_active() {
                         motor.peaks.request(motor.peak_media.clone(), request.params, request.id, reply);
                     } else {
@@ -123,8 +126,9 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
 
 struct Motor {
     peaks: crate::peaks::Peaks,
+    thumbs: crate::thumbs::Thumbs,
     peak_media: Option<crate::peaks::Media>,
-    cache: std::path::PathBuf,
+    work_dir: std::path::PathBuf,
     exports: Exports,
     speech: crate::speech::Speech,
     session: Session,
@@ -135,6 +139,13 @@ struct Motor {
     updates: Updates,
     time: Tick,
     last_frame: i64,
+}
+impl Drop for Motor {
+    fn drop(&mut self) {
+        // Ambos podem aguardar o cache. Sinaliza os dois antes de aguardar qualquer worker.
+        self.peaks.stop();
+        self.thumbs.stop();
+    }
 }
 impl Motor {
     fn peak_input(&self, params: &Value) -> Result<crate::peaks::Input> {
@@ -167,7 +178,7 @@ impl Motor {
                 self.submit();
                 Ok(json!({}))
             }
-            "captions.exportSrt" => crate::captions::export_srt(&self.session, field(params)?, &self.cache),
+            "captions.exportSrt" => crate::captions::export_srt(&self.session, field(params)?, &self.work_dir),
             "job.cancel" => {
                 let params: crate::exports::Cancel = field(params)?;
                 if self.speech.cancel(params.job_id) { Ok(json!({})) } else { self.exports.cancel(params) }

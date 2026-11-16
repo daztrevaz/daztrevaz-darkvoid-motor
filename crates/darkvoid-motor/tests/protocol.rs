@@ -12,6 +12,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungsten
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 mod audio_cases;
 mod caption_cases;
+mod media_cases;
 mod timeline_cases;
 const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
