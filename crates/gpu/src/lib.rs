@@ -68,6 +68,8 @@ struct Uploaded {
 }
 
 pub struct GpuCompositor {
+    /// Only export opts this into enlarged layers; monitor behaviour stays unchanged.
+    classic_scale: Option<f32>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     layer_pipeline: wgpu::RenderPipeline,
@@ -412,6 +414,7 @@ impl GpuCompositor {
             })
             .flatten();
         Self {
+            classic_scale: None,
             device: device.clone(),
             queue: queue.clone(),
             layer_pipeline,
@@ -835,7 +838,7 @@ impl GpuCompositor {
                 None => None,
             };
             // what the layer draws: the effect result (linear premultiplied RGBA) or the frame
-            let (u, tex) = match &job {
+            let (mut u, tex) = match &job {
                 Some(j) => {
                     let s =
                         SrcInfo { kind: 1, code_scale: 1.0, code_levels: 1.0, alpha: 0.0, chroma: l.size(), size: l.size(), color: l.frame.color, input: None };
@@ -860,6 +863,12 @@ impl GpuCompositor {
                 }
             };
             jobs.push(job);
+            let m = &l.matrix;
+            if let Some(sharpness) = self.classic_scale.filter(|_| (m.a * m.a + m.b * m.b).sqrt() > 1.0 || (m.c * m.c + m.d * m.d).sqrt() > 1.0) {
+                // Negative values identify classical reconstruction only on the placement draw.
+                // Effect-source draws continue to carry positive integer decimation here.
+                u[26] = -(sharpness.clamp(0.0, 100.0) + 1.0);
+            }
             let buf = self.uniform_buffer(&u);
             let mut entries = vec![
                 wgpu::BindGroupEntry { binding: 0, resource: buf.as_entire_binding() },

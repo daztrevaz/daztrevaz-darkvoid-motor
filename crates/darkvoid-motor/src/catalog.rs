@@ -77,7 +77,9 @@ pub fn get() -> Value {
         })
         .collect();
     items.extend(crate::color::items());
-    json!({"version":3,"revision":"m3.2-1","items":items})
+    items.push(json!({"id":"scale.classic","name":"Clássico","folder":["Exportação"],"kind":"scale","phase":"3b","processing":"mixed",
+        "params":[{"id":"sharpness","name":"Nitidez","type":"float","min":0,"max":100,"default":0,"animatable":false,"unit":"%"}]}));
+    json!({"version":3,"revision":"m3.4-1","items":items})
 }
 
 fn label(id: &str) -> &str {

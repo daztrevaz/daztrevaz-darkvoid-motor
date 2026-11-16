@@ -92,7 +92,7 @@ async fn color_looks_lut_errors_and_scopes_via_websocket() {
     assert_eq!(request(&mut socket, 1, "scopes.get", json!({"kinds":["waveform"]})).await["error"]["code"], "no_session");
     let catalog = request(&mut socket, 2, "catalog.get", json!({})).await;
     let items = catalog["result"]["items"].as_array().unwrap();
-    assert_eq!(items.len(), 77);
+    assert_eq!(items.len(), 78);
     assert_eq!(items.iter().filter(|i| i["kind"] == "look").count(), 26);
     assert!(items.iter().any(|i| i["id"] == "color.grade"));
     assert_eq!(request(&mut socket, 3, "preview.config", json!({"maxWidth":96,"maxHeight":54,"quality":95})).await["ok"], true);

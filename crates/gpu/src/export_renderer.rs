@@ -152,6 +152,7 @@ impl ExportRenderer {
     /// One frame as `render_sequence` would return it (premultiplied linear-light RGBA at the
     /// render size), or `None` when this frame must go to the CPU renderer.
     pub fn render(&mut self, project: &Project, seq: ItemId, t: Tick, opts: RenderOptions, sources: &dyn SourceProvider) -> Option<Image> {
+        self.compositor.classic_scale = opts.classic_scale;
         let plan = plan_frame(project, seq, t, opts, self.compositor.caps(), sources);
         match &plan {
             // Already the CPU image: return it unchanged instead of rendering it twice.

@@ -43,11 +43,20 @@ impl Preset {
 }
 #[derive(Deserialize)]
 pub struct Start {
+    #[serde(default)]
+    scale: Option<Scale>,
     #[serde(default, rename = "burnCaptions")]
     burn_captions: bool,
     path: String,
     preset: Preset,
     encoder: Encoder,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Scale {
+    method: String,
+    #[serde(default)]
+    sharpness: f64,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,6 +84,9 @@ impl Exports {
         Self { capabilities: Capabilities::detect(), cache, ids, active: None, events }
     }
     pub fn start(&mut self, session: &Session, params: Start) -> Result<Value> {
+        if params.scale.as_ref().is_some_and(|s| s.method != "classic" || !s.sharpness.is_finite() || !(0.0..=100.0).contains(&s.sharpness)) {
+            return Err(error("invalid_params", "Escala inválida: use o método classic e nitidez de 0 a 100."));
+        }
         if self.active.is_some() {
             return Err(error("export_busy", "Aguarde ou cancele a exportação em andamento."));
         }
@@ -86,6 +98,7 @@ impl Exports {
             .tempfile_in(&self.cache)
             .map_err(|_| error("export_io", "Não foi possível criar o arquivo temporário da exportação."))?;
         let mut settings = params.preset.settings();
+        settings.classic_scale = params.scale.map(|s| s.sharpness as f32);
         settings.burn_captions = params.burn_captions;
         self.capabilities.apply(params.encoder, &mut settings);
         settings.path = temp.path().to_string_lossy().into_owned();

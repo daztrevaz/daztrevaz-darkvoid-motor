@@ -181,7 +181,8 @@ fn sample(p: vec2<f32>) -> vec4<f32> {
     }
     let cs = u.p2.z;
     let yc = load4(tex0, p).r * cs;
-    let cp = p * u.src.zw / u.src.xy;
+    var cp = p * u.src.zw / u.src.xy;
+    if u.p3.z < 0.0 { cp = floor(floor(p) * u.src.zw / u.src.xy) + 0.5; }
     let cb = load4(tex1, cp).r * cs;
     let cr = load4(tex2, cp).r * cs;
     let y = (yc - u.p1.x) / u.p1.y;
@@ -201,8 +202,36 @@ fn sample(p: vec2<f32>) -> vec4<f32> {
     return vec4(lin * a, a);
 }
 
+fn cubic_weight(x0: f32) -> f32 {
+    let x=abs(x0);
+    if x<1.0 {return 1.5*x*x*x-2.5*x*x+1.0;}
+    if x<2.0 {return -0.5*x*x*x+2.5*x*x-4.0*x+2.0;}
+    return 0.0;
+}
+
+fn classic_tap(p:vec2<f32>)->vec4<f32> {
+    return sample(clamp(p,vec2(0.5),u.src.xy-0.5));
+}
+
+// Catmull–Rom reconstruction and bounded residual sharpening, as render::classic.
+fn classic_color(p:vec2<f32>)->vec4<f32> {
+    let q=p-0.5;let base=floor(q);let f=fract(q);
+    var acc=vec4(0.0);
+    for(var j=-1;j<=2;j++){for(var i=-1;i<=2;i++){
+        let ij=vec2(f32(i),f32(j));
+        acc+=classic_tap(base+ij+0.5)*cubic_weight(q.x-base.x-f32(i))*cubic_weight(q.y-base.y-f32(j));
+    }}
+    let a=classic_tap(base+0.5);let b=classic_tap(base+vec2(1.5,0.5));
+    let c=classic_tap(base+vec2(0.5,1.5));let d=classic_tap(base+1.5);
+    let lo=min(min(a,b),min(c,d));let hi=max(max(a,b),max(c,d));
+    let baseline=mix(mix(a,b,f.x),mix(c,d,f.x),f.y);
+    let amount=clamp(-u.p3.z-1.0,0.0,100.0)*0.0025;
+    return clamp(acc+amount*(acc-baseline),lo,hi);
+}
+
 // The layer's premultiplied linear colour at this pixel, opacity applied.
 fn layer_color(sp: vec2<f32>) -> vec4<f32> {
+    if u.p3.z < 0.0 {return classic_color(sp)*u.p0.x;}
     let n = max(u32(u.p0.z), 1u);
     let fp = u.p2.w;
     var acc = vec4(0.0);
