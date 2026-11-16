@@ -11,6 +11,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungsten
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 mod caption_cases;
+mod timeline_cases;
 const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 struct Motor {
