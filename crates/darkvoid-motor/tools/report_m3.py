@@ -22,9 +22,16 @@ MACHINE = {
 }
 
 def write(name, data):
-    (ROOT / "docs" / name).write_text(
-        json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8"
-    )
+    options = {"ensure_ascii": False, "allow_nan": False}
+    if name == "m3.0-medicoes.json":
+        # Um caso por linha mantém o inventário completo sem um diff de 100 mil linhas.
+        header = {k: v for k, v in data.items() if k != "cases"}
+        text = json.dumps(header, indent=2, **options)[:-2]
+        rows = ",\n".join("    " + json.dumps(row, separators=(",", ":"), **options) for row in data["cases"])
+        text += ',\n  "cases": [\n' + rows + "\n  ]\n}\n"
+    else:
+        text = json.dumps(data, indent=2, **options) + "\n"
+    (ROOT / "docs" / name).write_text(text, encoding="utf-8")
 
 report = {k: v for k, v in raw.items() if k not in ("catalog", "presets")}
 report["machine"] = MACHINE
