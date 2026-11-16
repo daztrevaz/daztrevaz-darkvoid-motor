@@ -39,5 +39,9 @@ wgpu = { version = "30", default-features = false, features = ["dx12", "vulkan",
 pollster = "1"
 tempfile = "3"
 
+[dev-dependencies]
+filmcraft-scopes = { workspace = true }
+image = { version = "0.25", default-features = false, features = ["png"] }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 filmcraft-platform = { workspace = true }
