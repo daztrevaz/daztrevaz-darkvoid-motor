@@ -26,8 +26,10 @@ importado no commit `59c6de0b9189c007ddd4eaa6c8b97e5a6c188937` sem a interface d
 2. **Este repositório é público.** Nunca coloque chaves, tokens, dados do canal, nomes de
    arquivos de clientes ou qualquer segredo. O motor não acessa Supabase nem Google.
 3. **Sem IA no produto.** O servidor MCP e o canal de controle de agentes do FilmCraft ficam fora
-   do build. O motor não chama nenhum serviço de IA.
-4. **Rede:** só 127.0.0.1 para a tela e HTTPS para baixar modelos Whisper (Hugging Face, com
+   do build. O motor não chama nenhum serviço de IA. **Exceção aprovada por DTRZ (16/11):**
+   modelos locais e gratuitos para transcrever (Whisper) e para narração (Fase 5), rodando no PC,
+   com licença que permite uso comercial. Clonar voz só com autorização do dono da voz.
+4. **Rede:** só 127.0.0.1 para a tela e HTTPS para baixar modelos Whisper e de narração (Hugging Face, com
    SHA-256), depois de a pessoa confirmar. Sem telemetria.
 5. **Licenças:** mantenha `LICENSE-MIT`, `LICENSE-APACHE`, `NOTICE` e `ATTRIBUTION.md`. Não use a
    marca FilmCraft ou ArtCraft no produto. Dependência nova só com licença permissiva (MIT,

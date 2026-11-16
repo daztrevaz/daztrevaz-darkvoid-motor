@@ -251,6 +251,8 @@ type Clip = ClipV2 & {
     scale?: AnimatedParam;                             // %, padrão: encaixe da v2 (100)
     rotation?: AnimatedParam;                          // graus (só quando o catálogo anunciar)
     opacity?: AnimatedParam;                           // %, 0 a 100, padrão 100
+    blendMode?: string;                                // id de um dos modos anunciados; padrão "normal"
+    crop?: { left: AnimatedParam; top: AnimatedParam; right: AnimatedParam; bottom: AnimatedParam }; // % de cada borda
   };
   speed?: number;                                      // 0,25 a 4, padrão 1; sem reverso
 };
@@ -263,6 +265,8 @@ type Clip = ClipV2 & {
   Sem clipe anterior encostado: `timeline_invalid`.
 - **Ordem de processamento:** cor → look → efeitos (na ordem da lista) → transformação/opacidade →
   transição entre os dois resultados. Copiar e colar entre clipes dá o mesmo resultado.
+- **Mesclagem e recorte:** os modos de `blendMode` e o recorte vêm no catálogo (item `transform.motion`,
+  parâmetros `blendMode` tipo `choice` e `crop_*`). Recorte aplicado antes da posição e da escala.
 - **Velocidade:** `in`/`out` continuam em tempo do arquivo; a duração do clipe na linha do tempo passa
   a ser `(out - in) / speed`. O som acompanha **sem mudar o tom**. Sobreposição é validada com a
   duração nova. Fades de volume valem no tempo da linha do tempo.

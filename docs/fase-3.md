@@ -56,6 +56,34 @@ Dividida em duas entregas:
 IDs públicos: `transition.<id interno>`, exceto `mosaic_transition` → `transition.mosaic` e
 `directional_blur_transition` → `transition.directional_blur`.
 
+## Decisões para a 3b (16/11)
+
+- **61 efeitos**, tirados dos 80 aprovados na M3.0 (sem novas medições, mesma regra da 3a: o que
+  travar no uso sai do catálogo a pedido de DTRZ). Mais **recortar**, **26 modos de mesclagem** e
+  **chroma key** (pedidos de DTRZ depois da lista de recursos do FilmCraft).
+- Fora: `posterize` (reprovado na M3.0), conversões técnicas (`cineon_converter`, `asc_cdl`,
+  `gamma_correction`, `proc_amp`, `video_limiter`), `metadata_burnin`, `spacer`, `simple_text`
+  (títulos ficam na Fase 4), `auto_reframe`, `auto_align`, `clone`, `extract`, `grow`, `shrink`,
+  `logo_cutout`, `move`, `transform`, `spin`, `reduce_interlace_flicker`, `offset` de campo e afins.
+- Rotação entra quando a divergência placa × processador for corrigida (parte da M3.3).
+- Contrato: `transform` ganha `blendMode` (os 26 modos) e `crop` (esquerda, topo, direita, base, em %),
+  ambos anunciados no catálogo; resto da seção 8 sem mudança.
+
+### Os 61 efeitos
+
+| Pasta | ID interno → nome na tela |
+| --- | --- |
+| Desfoque e nitidez (8) | `gaussian_blur` Desfoque gaussiano · `directional_blur` Desfoque direcional · `bokeh_blur` Desfoque bokeh · `focus_blur` Desfoque de foco · `compound_blur` Desfoque composto · `channel_blur` Desfoque por canal · `sharpen` Nitidez · `unsharp_mask` Máscara de nitidez |
+| Distorção (9) | `lens_distortion` Distorção de lente · `spherize` Esferizar · `twirl` Redemoinho · `wave_warp` Ondulação · `turbulent_displace` Deslocamento turbulento · `magnify` Lupa · `mirror` Espelho · `offset` Deslocar imagem · `corner_pin` Fixar cantos |
+| Movimento e câmera (6) | `camera_shake` Tremor de câmera · `wiggle` Balanço · `strobe` Estroboscópio · `posterize_time` Redução de quadros · `basic_3d` 3D básico · `rotate_3d` Rotação 3D |
+| Luzes e brilho (8) | `lens_flare` Reflexo de lente · `light_leaks` Vazamento de luz · `glint` Cintilar · `edge_glow` Brilho nas bordas · `wonder_glow` Brilho mágico · `volumetric_rays` Raios de luz · `lighting_effects` Iluminação · `echo_glow` Brilho com eco |
+| Estilização (13) | `black_white` Preto e branco · `invert` Inverter cores · `find_edges` Contornos · `color_emboss` Relevo colorido · `mosaic` Mosaico · `noise` Ruído · `rgb_split` Separação RGB · `brush_strokes` Pinceladas · `roughen_edges` Bordas ásperas · `stroke` Contorno · `drop_shadow` Sombra projetada · `long_shadow` Sombra longa · `vignette` Vinheta |
+| Cor (8) | `tint` Tingir · `color_pass` Manter uma cor · `color_replace` Trocar cor · `levels` Níveis · `channel_mix` Mixer de canais · `brightness_contrast` Brilho e contraste · `four_color_gradient` Gradiente de 4 cores · `gradient` Gradiente |
+| Transformação (4) | `horizontal_flip` Inverter na horizontal · `vertical_flip` Inverter na vertical · `rounded_crop` Recorte arredondado · `warp_stabilizer` Estabilizador |
+| Chaves e máscaras (5) | `ultra_key` Chroma key · `color_key` Chave de cor · `luma_key` Chave de brilho · `track_matte` Máscara por trilha · `alpha_adjust` Ajuste de transparência |
+
+IDs públicos: `effect.<id interno>`.
+
 ## Ordem e dependências
 
 ```
@@ -110,9 +138,11 @@ M3.0 (Codex: medição e proposta) ──► I3.1 (Claude: contrato v3 + simulad
 - Motor novo fixado, versão do DarkFlow, publicação, passos do Portão 3a.
 
 ### M3.3 · Efeitos, movimento e velocidade (Codex)
-- Efeitos da lista curada com parâmetros e pontos-chave; transformação com pontos-chave; velocidade
-  do clipe (0,25× a 4×) com o áudio acompanhando sem mudar o tom.
-- Aceite: zoom lento com pontos-chave e um desfoque animado iguais na prévia e na exportação.
+- Os 61 efeitos acima com parâmetros e pontos-chave; transformação (posição, escala, rotação,
+  opacidade, `blendMode` com os 26 modos, `crop`) com pontos-chave; velocidade do clipe (0,25× a 4×)
+  com o áudio acompanhando sem mudar o tom; corrigir a divergência da rotação.
+- Aceite: cada efeito aplicado por `timeline.set` muda a imagem (teste automático); zoom lento com
+  pontos-chave, um desfoque animado e um chroma key exportam iguais à prévia. Sem refazer a M3.0.
 
 ### M3.4 · Upscale clássico (Codex)
 - Ao exportar numa resolução maior que a do arquivo, escala de alta qualidade com nitidez ajustável
@@ -121,7 +151,7 @@ M3.0 (Codex: medição e proposta) ──► I3.1 (Claude: contrato v3 + simulad
   medido.
 
 ### D3.3 · Efeitos e pontos-chave (Claude)
-- Galeria de efeitos, lista de efeitos do clipe (ligar, desligar, reordenar), pontos-chave na
+- Função "Efeitos" na barra; recortar e modo de mesclagem em Ajustes; galeria de efeitos, lista de efeitos do clipe (ligar, desligar, reordenar), pontos-chave na
   agulha (adicionar, remover, ir ao anterior e ao próximo), faixa de pontos-chave em Propriedades,
   velocidade do clipe.
 
@@ -130,6 +160,11 @@ M3.0 (Codex: medição e proposta) ──► I3.1 (Claude: contrato v3 + simulad
 
 ### I3.3 · Integração 3b (Claude)
 - Motor novo fixado, versão do DarkFlow, publicação, passos do Portão 3b.
+
+## Andamento
+- M3.0, M3.1 (50 transições) e M3.2 (cor, 26 looks, LUT, osciloscópios) concluídas; motor 0.4.0.
+- D3.1, D3.2 e I3.2 concluídas; DarkFlow 0.24.0.
+- Osciloscópios: o motor já entrega (`scopes.get`); a tela ainda não mostra (sugestão para depois).
 
 ## Portão 3a (teste de DTRZ)
 1. Projeto com 5 transições diferentes; conferir na prévia e no arquivo exportado.
