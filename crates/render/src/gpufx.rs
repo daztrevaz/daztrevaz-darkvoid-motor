@@ -586,6 +586,10 @@ impl FxOp {
                 FxOp::VideoLimiter { max: 1.0 + clip_level / 100.0, comp: comp_val, axis, warn, warning_color: wc }
             }
             "lumetri" => {
+                // A mistura do grade inteiro usa a referência CPU, inclusive nos presets.
+                if e.f64_at("grade_mix", cx.t) < 100.0 {
+                    return None;
+                }
                 use crate::effects::{curve_param, is_identity_curve, wheel_rgb};
                 let (basic_on, creative_on, vignette_on) = (on(e, "basic_on"), on(e, "creative_on"), on(e, "vignette_on"));
                 let gs = grade_space(e, cx, "hdr_white");

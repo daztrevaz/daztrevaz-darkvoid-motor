@@ -68,7 +68,7 @@ pub fn public_transition(id: &str) -> String {
 }
 
 pub fn get() -> Value {
-    let items: Vec<_> = TRANSITIONS
+    let mut items: Vec<_> = TRANSITIONS
         .iter()
         .map(|(id, name, folder)| {
             let def = find_effect(id).expect("transição do engine");
@@ -76,7 +76,8 @@ pub fn get() -> Value {
             "params":def.params.iter().map(param_spec).collect::<Vec<_>>(),"processing":"mixed","defaultDuration":1.0})
         })
         .collect();
-    json!({"version":3,"revision":"m3.1-1","items":items})
+    items.extend(crate::color::items());
+    json!({"version":3,"revision":"m3.2-1","items":items})
 }
 
 fn label(id: &str) -> &str {
@@ -127,7 +128,7 @@ fn label(id: &str) -> &str {
         "antialias" => "Qualidade da suavização",
         "points" => "Pontas",
         "inner" => "Raio interno",
-        _ => panic!("parâmetro sem tradução: {id}"),
+        _ => crate::color::label(id),
     }
 }
 fn choice_name(name: &str) -> &str {
@@ -150,6 +151,9 @@ fn choice_name(name: &str) -> &str {
         "Low" => "Baixa",
         "Medium" => "Média",
         "High" => "Alta",
+        "Color/Gray" => "Cor e cinza",
+        "Color/Black" => "Cor e preto",
+        "White/Black" => "Branco e preto",
         _ => panic!("opção sem tradução: {name}"),
     }
 }
@@ -161,6 +165,9 @@ pub fn param_spec(p: &ParamDef) -> Value {
         ParamKind::Choice(_) => ("choice", None, None, ""),
         ParamKind::Point => ("point", None, None, "px"),
         ParamKind::Color => ("color", Some(0.0), Some(1.0), ""),
+        ParamKind::Curve { .. } => ("curve", Some(0.0), Some(1.0), ""),
+        ParamKind::Wheel => ("wheel", Some(-1.0), Some(1.0), ""),
+        ParamKind::Text => ("lut", None, None, ""),
         _ => unreachable!("tipo fora do catálogo M3.1"),
     };
     let default = match &p.default {
@@ -170,6 +177,8 @@ pub fn param_spec(p: &ParamDef) -> Value {
         ParamValue::Color(c) => json!(c),
         ParamValue::Vec2(v) if v.x.is_finite() && v.y.is_finite() => json!([v.x, v.y]),
         ParamValue::Vec2(_) => Value::Null,
+        ParamValue::Curve(points) => json!(points),
+        ParamValue::Text(text) => json!(text),
         _ => unreachable!(),
     };
     let mut spec = json!({"id":p.id,"name":label(p.id),"type":kind,"min":min,"max":max,"default":default,"animatable":false});
@@ -227,6 +236,36 @@ pub fn parse_param(p: &ParamDef, v: &Value) -> Option<ParamValue> {
                 *out = value.as_f64().filter(|n| n.is_finite() && (0.0..=1.0).contains(n))? as f32;
             }
             Some(ParamValue::Color(color))
+        }
+        ParamKind::Wheel => {
+            let a = v.as_array()?;
+            if a.len() != 2 {
+                return None;
+            }
+            let (x, y) = (a[0].as_f64()?, a[1].as_f64()?);
+            if ![x, y].iter().all(|n| n.is_finite() && (-1.0..=1.0).contains(n)) {
+                return None;
+            }
+            serde_json::from_value(json!({"Vec2":{"x":x,"y":y}})).ok()
+        }
+        ParamKind::Curve { .. } => {
+            let values = v.as_array()?;
+            if values.len() == 1 || values.len() > 256 {
+                return None;
+            }
+            let mut points = Vec::<[f32; 2]>::with_capacity(values.len());
+            for value in values {
+                let a = value.as_array()?;
+                if a.len() != 2 {
+                    return None;
+                }
+                let (x, y) = (a[0].as_f64()?, a[1].as_f64()?);
+                if ![x, y].iter().all(|n| n.is_finite() && (0.0..=1.0).contains(n)) || points.last().is_some_and(|p| p[0] >= x as f32) {
+                    return None;
+                }
+                points.push([x as f32, y as f32]);
+            }
+            Some(ParamValue::Curve(points))
         }
         _ => None,
     }

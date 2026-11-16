@@ -650,6 +650,20 @@ pub(crate) fn lift_scale(l: f32, nl: f32) -> (f32, f32) {
 }
 
 fn lumetri(img: &mut Image, e: &EffectInstance, cx: &FxCtx) {
+    let mix = (e.f64_at("grade_mix", cx.t) / 100.0).clamp(0.0, 1.0) as f32;
+    if mix == 0.0 {
+        return;
+    }
+    let before = (mix < 1.0).then(|| img.px.clone());
+    lumetri_full(img, e, cx);
+    if let Some(before) = before {
+        for (graded, original) in img.px.iter_mut().zip(before) {
+            *graded = original + (*graded - original) * mix;
+        }
+    }
+}
+
+fn lumetri_full(img: &mut Image, e: &EffectInstance, cx: &FxCtx) {
     let (basic_on, creative_on, vignette_on) = (on(e, "basic_on"), on(e, "creative_on"), on(e, "vignette_on"));
     let input_lut = if basic_on { crate::luts::resolve(cx.project, text(e, "input_lut")) } else { None };
     let bf = |id: &str| if basic_on { f(e, id, cx) } else { 0.0 };

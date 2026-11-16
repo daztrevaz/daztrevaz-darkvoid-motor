@@ -29,6 +29,10 @@ struct Clip {
     muted: bool,
     #[serde(default)]
     transition_in: Option<TransitionInput>,
+    #[serde(default)]
+    color: Option<crate::color::Color>,
+    #[serde(default)]
+    look: Option<crate::color::Look>,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -61,6 +65,8 @@ pub struct Timeline {
     fps: f64,
     clips: HashMap<String, (Clip, Vec<ClipId>)>,
     media: HashMap<String, Media>,
+    lut_cache: crate::color::LutCache,
+    color_effects: HashMap<String, Vec<filmcraft_project::EffectInstance>>,
 }
 
 fn invalid(id: &str, reason: &str) -> Error {
@@ -99,10 +105,16 @@ impl Timeline {
             if let Some(transition) = value.get("transitionIn") {
                 serde_json::from_value::<TransitionInput>(transition.clone()).map_err(|_| crate::catalog::invalid(&id, "transitionIn"))?;
             }
-            for field in ["color", "look", "effects", "transform", "speed"] {
+            for field in ["effects", "transform", "speed"] {
                 if value.get(field).is_some() {
                     return Err(crate::catalog::invalid(&id, field));
                 }
+            }
+            if let Some(color) = value.get("color") {
+                serde_json::from_value::<crate::color::Color>(color.clone()).map_err(|_| crate::catalog::invalid(&id, "color"))?;
+            }
+            if let Some(look) = value.get("look") {
+                serde_json::from_value::<crate::color::Look>(look.clone()).map_err(|_| crate::catalog::invalid(&id, "look"))?;
             }
             let c: Clip = serde_json::from_value(value).map_err(|_| invalid(&id, "campos ausentes ou com tipo inválido."))?;
             if c.id.trim().is_empty() || !ids.insert(c.id.clone()) {
@@ -153,6 +165,14 @@ impl Timeline {
             }
         }
         let reset = self.format != input.format || self.fps != input.fps || session.active_sequence().is_none();
+        let mut color_effects = HashMap::new();
+        let mut luts = HashMap::new();
+        for c in &clips {
+            if !c.track.starts_with('V') && (c.color.is_some() || c.look.is_some()) {
+                return Err(crate::catalog::invalid(&c.id, "color/look: use uma trilha de vídeo"));
+            }
+            color_effects.insert(c.id.clone(), self.lut_cache.prepare(c.color.as_ref(), c.look.as_ref(), &c.id, &mut luts)?);
+        }
         let mut work = Session::new(Arc::new(FsServices));
         work.services = session.services.clone();
         if !reset {
@@ -161,6 +181,12 @@ impl Timeline {
             work.media = session.media.clone();
         }
         work.prefs.media.import_image_sequences = false;
+        let mut library: Vec<_> = luts.into_values().collect();
+        library.sort_by(|a, b| a.id.cmp(&b.id));
+        library.dedup_by(|a, b| a.id == b.id);
+        if work.project.luts != library {
+            Arc::make_mut(&mut work.project).luts = library;
+        }
         let mut media = if reset { HashMap::new() } else { self.media.clone() };
         let mut checked = HashSet::new();
         let mut refreshed = HashSet::new();
@@ -202,7 +228,12 @@ impl Timeline {
         }
         let changed: HashSet<_> = clips
             .iter()
-            .filter(|c| reset || refreshed.contains(&c.media) || self.clips.get(&c.id).is_none_or(|(old, _)| old != *c))
+            .filter(|c| {
+                reset
+                    || refreshed.contains(&c.media)
+                    || self.clips.get(&c.id).is_none_or(|(old, _)| old != *c)
+                    || self.color_effects.get(&c.id) != color_effects.get(&c.id)
+            })
             .map(|c| c.id.clone())
             .collect();
         let removed: HashSet<_> =
@@ -233,6 +264,9 @@ impl Timeline {
                         audio.enabled = !c.muted && c.volume > 0.0;
                         placements.push((seq.audio_tracks[index].id, audio));
                         clip_ids.push(audio_id);
+                    }
+                    if video {
+                        item.effects.extend(color_effects[&c.id].clone());
                     }
                     placements.push((track, item));
                     mapping.insert(c.id.clone(), (c.clone(), clip_ids));
@@ -305,6 +339,7 @@ impl Timeline {
         self.fps = input.fps;
         self.clips = mapping;
         self.media = media;
+        self.color_effects = color_effects;
         Ok(reset)
     }
 }

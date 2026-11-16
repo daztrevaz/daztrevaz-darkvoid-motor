@@ -685,6 +685,7 @@ dependencies = [
  "cpal",
  "crossbeam-queue",
  "filmcraft-captions",
+ "filmcraft-color",
  "filmcraft-edit",
  "filmcraft-engine",
  "filmcraft-export",

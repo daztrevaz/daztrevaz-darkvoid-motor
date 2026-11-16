@@ -421,6 +421,7 @@ fn build_effects() -> Vec<EffectDef> {
             "Color Grading",
             COLOR_CORR,
             vec![
+                grp(f("grade_mix", "Grade Mix", 100.0, 0.0, 100.0, "%"), "Creative"),
                 grp(b("basic_on", "Basic Correction", true), "Basic Correction"),
                 grp(txt("input_lut", "Input LUT"), "Basic Correction"),
                 grp(f("temperature", "Temperature", 0.0, -100.0, 100.0, ""), "Basic Correction"),
