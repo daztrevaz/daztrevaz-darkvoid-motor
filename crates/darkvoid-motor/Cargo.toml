@@ -15,7 +15,8 @@ name = "darkvoid-motor"
 path = "src/main.rs"
 
 [dependencies]
-filmcraft-engine = { workspace = true }
+filmcraft-engine = { workspace = true, features = ["whisper", "speech-download"] }
+filmcraft-speech = { workspace = true, features = ["whisper", "download"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 filmcraft-time = { workspace = true }

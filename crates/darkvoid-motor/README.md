@@ -1,7 +1,8 @@
-# Motor DARKVOID — M0.2 e M0.3
+# Motor DARKVOID — Fase 0
 
 Servidor local do protocolo de [`docs/protocolo-motor.md`](../../docs/protocolo-motor.md).
-Não modifica o contrato nem os crates importados do FilmCraft.
+Contrato preservado. No código importado, o downloader de fala exige HTTPS,
+inclusive em redirecionamentos; a inferência do FilmCraft não foi alterada.
 
 ## Uso
 
@@ -16,9 +17,9 @@ Uma nova conexão autenticada substitui a anterior. EOF em stdin ou `shutdown`
 encerra o motor e interrompe o áudio. Diagnósticos ficam em stderr.
 
 Comandos implementados: `hello`, `media.probe`, `session.open`, `preview.config`,
-`transport.play`, `transport.pause`, `transport.seek`, `export.start`, `job.cancel` e `shutdown`.
-Transcrição pertence a M0.4 e retorna `unknown_command`.
-`hello` informa a GPU usada na composição e `speech: false`.
+`transport.play`, `transport.pause`, `transport.seek`, `export.start`, `job.cancel`,
+`speech.models`, `speech.download`, `speech.transcribe` e `shutdown`.
+`hello` informa a GPU usada na composição e `speech: true` (Whisper CPU disponível no build).
 Os codificadores sempre incluem `software`; `nvenc_h264` e `nvenc_hevc` só entram
 quando cada codec é inicializado com sucesso no driver, por meio da API segura existente.
 
@@ -111,3 +112,52 @@ cargo test --release -p darkvoid-motor --test protocol acceptance_export_one_min
 O teste mede do pedido até `job.done`, incluindo preparação, codificação e publicação.
 Não usa FFmpeg no produto. FFmpeg pode ser usado fora do motor para gerar e conferir
 as mídias sintéticas; o teste não comprova abertura no player nem upload ao YouTube Studio.
+
+## Transcrição local — M0.4
+
+O build ativa `whisper` e `speech-download` do engine e usa o reconhecedor Whisper
+CPU do FilmCraft, com alinhamento por atenção e ajuste dos limites por atividade de voz.
+O áudio é decodificado em blocos de um segundo, convertido para mono a 16 kHz e
+processado no computador. Não há telemetria nem upload de áudio.
+
+`speech.models` lista tiny, base e small, tamanho total em bytes, licença e instalação.
+`installed: true` exige todos os artefatos com tamanho e SHA-256 corretos.
+Os arquivos ficam em `<data-dir>/modelos/<id>/`; pesos nunca são versionados.
+
+A tela deve mostrar tamanho, origem Hugging Face/OpenAI e licenças MIT/Apache-2.0
+antes de confirmar. Somente depois envia `speech.download {model}`, como definido
+no contrato existente. O pedido autenticado é a fronteira de confirmação do servidor;
+não foi acrescentado um campo novo ao protocolo. `hello`, listagem e transcrição
+nunca iniciam download. O catálogo fixa URLs HTTPS por revisão e SHA-256; não aceita URL do cliente.
+O downloader do engine verifica os arquivos antes de publicá-los. Arquivos `.part`
+são removidos ao terminar, cancelar ou falhar; arquivos completos verificados são preservados.
+
+`speech.transcribe {model, language}` aceita `pt`, `en` ou `auto`. Usa a mídia da
+sessão, independente do playhead, e exige o modelo instalado. O job faz uma nova
+verificação SHA-256 antes da carga do modelo. A resposta final tem idioma e palavras
+com `text`, `start`, `end` e `confidence`, com tempos em segundos. Limites inválidos
+são ajustados à duração do áudio, palavras vazias ou sem duração são descartadas e
+intervalos não retrocedem. A confiança é a fornecida pelo engine, que atualmente
+usa 1 como padrão; não representa uma probabilidade calibrada de acerto.
+
+Downloads e transcrições compartilham um worker de fala por processo. Uma nova
+tentativa durante processamento retorna `speech_busy`; exportação mantém seu worker
+independente. Todos os tipos de job usam o mesmo alocador de IDs para evitar colisões.
+São emitidos `job.progress`, `job.done` e `job.error`, com mensagens em português.
+`job.cancel` também cancela jobs de fala. EOF e shutdown sinalizam cancelamento e
+aguardam o worker. O cancelamento é cooperativo: download verifica entre blocos
+recebidos e Whisper verifica entre janelas; não interrompe um cálculo interno em curso.
+
+Os testes padrão não acessam rede nem exigem modelos. A medição física exige
+confirmação explícita e entrada sintética PT-BR de 60 segundos:
+
+```powershell
+$env:MOTOR_SPEECH_DOWNLOAD_CONFIRMED = '1'
+$env:MOTOR_SPEECH_DATA_DIR = '<pasta-de-teste>'
+$env:MOTOR_SPEECH_MEDIA = '<video-com-fala-pt-br-de-60-segundos>'
+cargo test --release -p darkvoid-motor --test protocol acceptance_whisper_small_portuguese_one_minute -- --ignored --nocapture
+```
+
+O tempo de transcrição inclui a validação do modelo, sua carga, a decodificação de
+áudio e a inferência. O download é medido separadamente. A meta de aceite é menos
+de 60 segundos com small no Ryzen 5600X; aprovação depende da medição real.

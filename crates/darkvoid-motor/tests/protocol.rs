@@ -21,11 +21,14 @@ struct Motor {
 }
 impl Motor {
     fn start() -> Self {
+        Self::start_with_data_dir(None)
+    }
+    fn start_with_data_dir(data_dir: Option<&std::path::Path>) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let stderr = dir.path().join("stderr.log");
         let mut child = Command::new(env!("CARGO_BIN_EXE_darkvoid-motor"))
             .args(["--token", TOKEN, "--data-dir"])
-            .arg(dir.path())
+            .arg(data_dir.unwrap_or(dir.path()))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(std::fs::File::create(&stderr).unwrap())
@@ -95,7 +98,7 @@ async fn authentication_replacement_errors_and_shutdown() {
     let mut first = motor.connect().await;
     let hello = request(&mut first, 1, "hello", json!({})).await;
     assert_eq!(hello["ok"], true);
-    assert_eq!(hello["result"]["speech"], false);
+    assert_eq!(hello["result"]["speech"], true);
     let encoders = hello["result"]["encoders"].as_array().unwrap();
     assert_eq!(encoders.first().unwrap(), "software");
     assert!(encoders.iter().all(|e| ["software", "nvenc_h264", "nvenc_hevc"].iter().any(|name| e == name)));
@@ -119,7 +122,7 @@ async fn authentication_replacement_errors_and_shutdown() {
         (5, "media.probe", json!({"path":"arquivo-inexistente.mp4"}), "media_not_found"),
         (6, "preview.config", json!({"maxWidth":0,"maxHeight":1080,"quality":80}), "invalid_params"),
         (7, "preview.config", json!({"maxWidth":1920,"maxHeight":1080,"quality":101}), "invalid_params"),
-        (8, "speech.models", json!({}), "unknown_command"),
+        (8, "speech.unknown", json!({}), "unknown_command"),
         (9, "session.open", json!({"path":fixture(),"format":"errado"}), "invalid_params"),
         (10, "media.probe", json!({"path":"https://example.invalid/video.mp4"}), "invalid_params"),
     ] {
@@ -422,4 +425,149 @@ async fn acceptance_export_one_minute_each_preset() {
     request(&mut socket, 99, "shutdown", json!({})).await;
     motor.exited().await;
     eprintln!("{}", std::fs::read_to_string(&motor.stderr).unwrap());
+}
+
+#[tokio::test]
+async fn speech_catalogue_validation_never_downloads_implicitly() {
+    let mut motor = Motor::start();
+    let mut socket = motor.connect().await;
+    let listed = request(&mut socket, 1, "speech.models", json!({})).await;
+    let models = listed["result"]["models"].as_array().unwrap();
+    assert_eq!(models.len(), 3);
+    for (model, id) in models.iter().zip(["whisper-tiny", "whisper-base", "whisper-small"]) {
+        assert_eq!(model["id"], id);
+        assert_eq!(model["installed"], false);
+        assert!(model["sizeBytes"].as_u64().unwrap() > 100_000_000);
+        assert!(model["license"].as_str().unwrap().contains("MIT"));
+    }
+    assert!(!motor._dir.path().join("modelos").exists());
+    assert_eq!(request(&mut socket, 2, "speech.download", json!({"model":"../escape"})).await["error"]["code"], "unknown_model");
+    assert_eq!(request(&mut socket, 3, "speech.transcribe", json!({"model":"whisper-small","language":"pt"})).await["error"]["code"], "no_session");
+    request(&mut socket, 4, "session.open", json!({"path":fixture(),"format":"source"})).await;
+    assert_eq!(request(&mut socket, 5, "speech.transcribe", json!({"model":"whisper-small","language":"pt"})).await["error"]["code"], "model_not_installed");
+    assert_eq!(request(&mut socket, 6, "speech.transcribe", json!({"model":"whisper-small","language":"fr"})).await["error"]["code"], "invalid_params");
+    assert!(!motor._dir.path().join("modelos").exists());
+    // Presença dos nomes dos arquivos não basta: o worker deve verificar SHA-256 antes de carregar.
+    let corrupt = motor._dir.path().join("modelos/whisper-small");
+    std::fs::create_dir_all(&corrupt).unwrap();
+    for name in ["config.json", "generation_config.json", "tokenizer.json", "model.safetensors"] {
+        std::fs::write(corrupt.join(name), b"invalido").unwrap();
+    }
+    let started = request(&mut socket, 7, "speech.transcribe", json!({"model":"whisper-small","language":"pt"})).await;
+    assert_eq!(started["ok"], true, "{started}");
+    let done = speech_job_finished(&mut socket, &started["result"]["jobId"], "transcribe", Duration::from_secs(10)).await;
+    assert_eq!(done["event"], "job.error");
+    assert_eq!(done["data"]["error"]["code"], "model_not_installed");
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+}
+
+async fn speech_job_finished(socket: &mut Socket, job: &Value, kind: &str, deadline: Duration) -> Value {
+    let until = Instant::now() + deadline;
+    let mut last = 0.0;
+    loop {
+        assert!(Instant::now() < until, "job de fala excedeu o prazo");
+        let Message::Text(text) = next(socket).await else {
+            continue;
+        };
+        let event: Value = serde_json::from_str(&text).unwrap();
+        if event["data"]["jobId"] != *job {
+            continue;
+        }
+        assert_eq!(event["data"]["kind"], kind);
+        if event["event"] == "job.progress" {
+            let fraction = event["data"]["fraction"].as_f64().unwrap();
+            assert!(fraction >= last && fraction <= 1.0);
+            last = fraction;
+        } else if event["event"] == "job.done" || event["event"] == "job.error" {
+            return event;
+        }
+    }
+}
+
+#[tokio::test]
+#[ignore = "Baixa ~969,5 MB após autorização explícita e mede Whisper small com fala PT-BR local de 60 s."]
+async fn acceptance_whisper_small_portuguese_one_minute() {
+    assert_eq!(
+        std::env::var("MOTOR_SPEECH_DOWNLOAD_CONFIRMED").as_deref(),
+        Ok("1"),
+        "confirme download, tamanho, origem Hugging Face/OpenAI e licenças MIT/Apache-2.0"
+    );
+    let root = std::path::PathBuf::from(std::env::var("MOTOR_SPEECH_DATA_DIR").expect("MOTOR_SPEECH_DATA_DIR"));
+    let media = std::env::var("MOTOR_SPEECH_MEDIA").expect("MOTOR_SPEECH_MEDIA");
+    let mut motor = Motor::start_with_data_dir(Some(&root));
+    let mut socket = motor.connect().await;
+    let download_time = Instant::now();
+    let started = request(&mut socket, 1, "speech.download", json!({"model":"whisper-small"})).await;
+    assert_eq!(started["ok"], true, "{started}");
+    let done = speech_job_finished(&mut socket, &started["result"]["jobId"], "download", Duration::from_secs(3600)).await;
+    assert_eq!(done["event"], "job.done", "{done}");
+    eprintln!("Download/verificação small: {:.3} s", download_time.elapsed().as_secs_f64());
+    let listed = request(&mut socket, 2, "speech.models", json!({})).await;
+    assert_eq!(listed["result"]["models"][2]["installed"], true);
+    let open = request(&mut socket, 3, "session.open", json!({"path":media,"format":"source"})).await;
+    assert_eq!(open["ok"], true, "{open}");
+    assert!((open["result"]["duration"].as_f64().unwrap() - 60.0).abs() < 0.1);
+    let now = Instant::now();
+    let started = request(&mut socket, 4, "speech.transcribe", json!({"model":"whisper-small","language":"pt"})).await;
+    assert_eq!(started["ok"], true, "{started}");
+    let done = speech_job_finished(&mut socket, &started["result"]["jobId"], "transcribe", Duration::from_secs(1800)).await;
+    let elapsed = now.elapsed().as_secs_f64();
+    assert_eq!(done["event"], "job.done", "{done}");
+    let result = &done["data"]["result"];
+    assert_eq!(result["language"], "pt");
+    let words = result["words"].as_array().unwrap();
+    assert!(words.len() > 30, "poucas palavras: {result}");
+    let mut end = 0.0;
+    for word in words {
+        let start = word["start"].as_f64().unwrap();
+        let finish = word["end"].as_f64().unwrap();
+        assert!(start >= end && finish > start && finish <= 60.1);
+        assert!((0.0..=1.0).contains(&word["confidence"].as_f64().unwrap()));
+        end = finish;
+    }
+    std::fs::write(root.join("resultado-pt-br.json"), serde_json::to_vec_pretty(result).unwrap()).unwrap();
+    eprintln!("Whisper small PT-BR 60 s: {elapsed:.3} s; {} palavras", words.len());
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+    assert!(elapsed < 60.0, "transcrição excedeu a meta de 60 s: {elapsed:.3} s");
+}
+
+#[tokio::test]
+#[ignore = "Acessa Hugging Face após confirmação para verificar cancelamento durante transferência real."]
+async fn acceptance_cancel_small_download() {
+    assert_eq!(std::env::var("MOTOR_SPEECH_DOWNLOAD_CONFIRMED").as_deref(), Ok("1"));
+    let base = std::path::PathBuf::from(std::env::var("MOTOR_SPEECH_DATA_DIR").expect("MOTOR_SPEECH_DATA_DIR"));
+    let root = base.join("teste-cancelamento");
+    let mut motor = Motor::start_with_data_dir(Some(&root));
+    let mut socket = motor.connect().await;
+    let started = request(&mut socket, 1, "speech.download", json!({"model":"whisper-small"})).await;
+    assert_eq!(started["ok"], true, "{started}");
+    let job = &started["result"]["jobId"];
+    loop {
+        let Message::Text(text) = next(&mut socket).await else {
+            continue;
+        };
+        let event: Value = serde_json::from_str(&text).unwrap();
+        if event["data"]["jobId"] != *job {
+            continue;
+        }
+        assert_ne!(event["event"], "job.error", "{event}");
+        assert_ne!(event["event"], "job.done", "o modelo já estava instalado; use outra pasta de teste");
+        if event["event"] == "job.progress" && event["data"]["fraction"].as_f64().unwrap() > 0.01 {
+            break;
+        }
+    }
+    let now = Instant::now();
+    assert_eq!(request(&mut socket, 2, "job.cancel", json!({"jobId":job})).await["ok"], true);
+    let done = speech_job_finished(&mut socket, job, "download", Duration::from_secs(60)).await;
+    assert_eq!(done["event"], "job.error", "{done}");
+    assert_eq!(done["data"]["error"]["code"], "job_cancelled");
+    eprintln!("Cancelamento de download real: {:.3} s", now.elapsed().as_secs_f64());
+    let model_dir = root.join("modelos/whisper-small");
+    assert!(std::fs::read_dir(&model_dir).unwrap().all(|entry| !entry.unwrap().file_name().to_string_lossy().ends_with(".part")));
+    let listed = request(&mut socket, 3, "speech.models", json!({})).await;
+    assert_eq!(listed["result"]["models"][2]["installed"], false);
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
 }

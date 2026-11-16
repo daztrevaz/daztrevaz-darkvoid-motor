@@ -6,6 +6,7 @@ mod motor;
 mod preview;
 mod protocol;
 mod server;
+mod speech;
 
 use std::{io::Read, path::PathBuf, process::ExitCode};
 use tokio::sync::watch;
