@@ -17,6 +17,45 @@ mod timeline_cases;
 const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 #[tokio::test]
+async fn color_looks_lut_errors_and_scopes_via_websocket() {
+    use base64::Engine;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cor.png");
+    image::RgbImage::from_fn(96, 54, |x, y| image::Rgb([(x * 2 + 20) as u8, (y * 4 + 20) as u8, 90])).save(&path).unwrap();
+    let mut motor = Motor::start();
+    let mut socket = motor.connect().await;
+    assert_eq!(request(&mut socket, 1, "scopes.get", json!({"kinds":["waveform"]})).await["error"]["code"], "no_session");
+    let catalog = request(&mut socket, 2, "catalog.get", json!({})).await;
+    let items = catalog["result"]["items"].as_array().unwrap();
+    assert_eq!(items.len(), 77);
+    assert_eq!(items.iter().filter(|i| i["kind"] == "look").count(), 26);
+    assert!(items.iter().any(|i| i["id"] == "color.grade"));
+    assert_eq!(request(&mut socket, 3, "preview.config", json!({"maxWidth":96,"maxHeight":54,"quality":95})).await["ok"], true);
+    let mut params = json!({"format":"horizontal","clips":[{"id":"cor","media":path,"track":"V1","start":0,"in":0,"out":1,"volume":1,"fadeIn":0,"fadeOut":0}]});
+    let before = command_frame(&mut socket, 4, "timeline.set", params.clone()).await;
+    params["clips"][0]["color"] = json!({"enabled":true,"params":{"exposure":0.8,"curve_luma":[[0,0],[0.5,0.6],[1,1]]}});
+    params["clips"][0]["look"] = json!({"id":"look.preset.sepia","intensity":50});
+    let after = command_frame(&mut socket, 5, "timeline.set", params.clone()).await;
+    assert_ne!(before, after);
+    let scopes = request(&mut socket, 6, "scopes.get", json!({"kinds":["waveform","vectorscope"]})).await;
+    assert_eq!(scopes["ok"], true, "{scopes}");
+    for kind in ["waveform", "vectorscope"] {
+        let png = base64::engine::general_purpose::STANDARD.decode(scopes["result"][kind].as_str().unwrap()).unwrap();
+        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+        image::load_from_memory(&png).unwrap();
+    }
+    let lut = dir.path().join("ruim.cube");
+    std::fs::write(&lut, "LUT_3D_SIZE 66\n").unwrap();
+    params["clips"][0]["color"]["params"]["lut"] = json!(lut);
+    assert_eq!(request(&mut socket, 7, "timeline.set", params.clone()).await["error"]["code"], "lut_invalid");
+    std::fs::remove_file(&lut).unwrap();
+    assert_eq!(request(&mut socket, 8, "timeline.set", params).await["error"]["code"], "media_not_found");
+    assert_eq!(command_frame(&mut socket, 9, "transport.seek", json!({"seconds":0})).await, after, "validação preserva sessão");
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+}
+
+#[tokio::test]
 async fn catalog_transitions_render_via_timeline_set() {
     let dir = tempfile::tempdir().unwrap();
     let a = dir.path().join("a.png");
@@ -33,7 +72,7 @@ async fn catalog_transitions_render_via_timeline_set() {
     let mut socket = motor.connect().await;
     assert_eq!(request(&mut socket, 1, "hello", json!({})).await["result"]["protocol"], 3);
     let catalog = request(&mut socket, 2, "catalog.get", json!({})).await;
-    let items = catalog["result"]["items"].as_array().unwrap();
+    let items: Vec<_> = catalog["result"]["items"].as_array().unwrap().iter().filter(|item| item["kind"] == "transition").collect();
     assert_eq!(items.len(), 50);
     assert_eq!(request(&mut socket, 3, "preview.config", json!({"maxWidth":96,"maxHeight":54,"quality":95})).await["ok"], true);
     let base = json!({"format":"horizontal","clips":[

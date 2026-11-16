@@ -163,6 +163,7 @@ impl Motor {
                 json!({"version":VERSION,"protocol":3,"fonts":crate::captions::fonts(),"gpu":self.renderer.gpu,"encoders":self.exports.capabilities.names(),"speech":filmcraft_speech::available()}),
             ),
             "catalog.get" => Ok(crate::catalog::get()),
+            "scopes.get" => crate::color::scopes(&self.session, self.time, params),
             "speech.models" => Ok(self.speech.list()),
             "speech.download" => self.speech.download(field(params)?),
             "speech.transcribe" => self.speech.transcribe(&self.session, field(params)?),

@@ -111,7 +111,7 @@ transitions!(
 #[test]
 fn catalog_defaults_roundtrip_and_only_approved_items() {
     let catalog = crate::catalog::get();
-    let items = catalog["items"].as_array().unwrap();
+    let items: Vec<_> = catalog["items"].as_array().unwrap().iter().filter(|item| item["kind"] == "transition").collect();
     assert_eq!(items.len(), 50);
     let mut ids = std::collections::HashSet::new();
     for item in items {
