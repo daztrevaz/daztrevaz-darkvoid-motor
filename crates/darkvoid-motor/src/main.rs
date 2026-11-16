@@ -9,6 +9,7 @@ mod preview;
 mod protocol;
 mod server;
 mod speech;
+mod timeline;
 
 use std::{io::Read, path::PathBuf, process::ExitCode};
 use tokio::sync::watch;

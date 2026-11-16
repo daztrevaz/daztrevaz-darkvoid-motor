@@ -56,6 +56,7 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
         exports: Exports::new(data_dir.join("cache"), updates.jobs.clone(), ids.clone()),
         speech: crate::speech::Speech::new(data_dir.join("modelos"), updates.jobs.clone(), ids),
         session: Session::new(Arc::new(FsServices)),
+        timeline: crate::timeline::Timeline::default(),
         config: preview::Config::default(),
         renderer,
         audio: None,
@@ -72,7 +73,7 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
         }
         match commands.try_recv() {
             Ok(Command::Request(client, request, reply)) if client == motor.updates.active_client.load(Ordering::Acquire) => {
-                if request.cmd == "audio.peaks" {
+                if request.cmd == "audio.peaks" && !motor.timeline.is_active() {
                     motor.peaks.request(motor.peak_media.clone(), request.params, request.id, reply);
                 } else {
                     let result = motor.execute(&request.cmd, request.params);
@@ -122,6 +123,7 @@ struct Motor {
     exports: Exports,
     speech: crate::speech::Speech,
     session: Session,
+    timeline: crate::timeline::Timeline,
     config: preview::Config,
     renderer: Renderer,
     audio: Option<Audio>,
@@ -133,10 +135,13 @@ impl Motor {
     fn execute(&mut self, command: &str, params: Value) -> Result<Value> {
         match command {
             "hello" => Ok(
-                json!({"version":VERSION,"protocol":1,"fonts":crate::captions::fonts(),"gpu":self.renderer.gpu,"encoders":self.exports.capabilities.names(),"speech":filmcraft_speech::available()}),
+                json!({"version":VERSION,"protocol":2,"fonts":crate::captions::fonts(),"gpu":self.renderer.gpu,"encoders":self.exports.capabilities.names(),"speech":filmcraft_speech::available()}),
             ),
             "speech.models" => Ok(self.speech.list()),
             "speech.download" => self.speech.download(field(params)?),
+            "audio.peaks" | "speech.transcribe" if self.timeline.is_active() => {
+                Err(error("unsupported_operation", "A onda de áudio e a transcrição da linha do tempo estarão disponíveis na etapa M2.2."))
+            }
             "speech.transcribe" => self.speech.transcribe(&self.session, field(params)?),
             "export.start" => self.exports.start(&self.session, field(params)?),
             "captions.set" => {
@@ -162,6 +167,7 @@ impl Motor {
                 Ok(probe_result(&info))
             }
             "session.open" => self.open(field(params)?),
+            "timeline.set" => self.set_timeline(params),
             "preview.config" => {
                 let config: preview::Config = field(params)?;
                 self.config = config.validate()?;
@@ -197,18 +203,32 @@ impl Motor {
         }
     }
     fn probe(&self, path: &str) -> Result<MediaInfo> {
-        // Recusa URLs e caminhos de rede: toda mídia deve vir do disco local.
-        if path.contains("://") || path.starts_with(r"\\") || path.starts_with("//") {
-            return Err(protocol::invalid());
+        crate::timeline::probe(&self.session, path)
+    }
+    fn set_timeline(&mut self, params: Value) -> Result<Value> {
+        // Prepara e valida antes de interromper uma reprodução em andamento.
+        let previous = self.session.project.clone();
+        let reset = self.timeline.set(&mut self.session, params)?;
+        let changed = !Arc::ptr_eq(&previous, &self.session.project);
+        if reset {
+            self.pause();
+        } else if let Some(audio) = &self.audio {
+            self.time = audio.time();
         }
-        if !std::path::Path::new(path).is_file() {
-            return Err(error("media_not_found", "Arquivo não encontrado."));
+        let seq = self.session.active_sequence().ok_or_else(no_session)?;
+        let duration = seq.duration();
+        let result = json!({"width":seq.settings.width,"height":seq.settings.height,"fps":seq.settings.frame_rate.as_f64(),"duration":duration.seconds()});
+        self.time = if reset { Tick::ZERO } else { self.time.min(duration) };
+        self.peak_media = None;
+        self.invalidate();
+        self.submit();
+        if self.time >= duration {
+            self.pause();
+        } else if changed && let Some(audio) = &self.audio {
+            audio.update(&self.session);
         }
-        self.session
-            .media
-            .probe_file(path, &*self.session.services)
-            .map(|s| s.info().clone())
-            .map_err(|_| error("media_unsupported", "Não foi possível abrir esta mídia."))
+        self.emit_state();
+        Ok(result)
     }
     fn open(&mut self, params: Open) -> Result<Value> {
         if !["source", "vertical", "horizontal"].contains(&params.format.as_str()) {
@@ -239,6 +259,7 @@ impl Motor {
         self.pause();
         self.peak_media = Some(crate::peaks::Media { path: params.path.into(), duration: seq.duration() });
         self.session = next;
+        self.timeline = crate::timeline::Timeline::default();
         self.time = Tick::ZERO;
         self.invalidate();
         self.submit();
@@ -342,7 +363,15 @@ struct Seek {
     seconds: f64,
 }
 fn probe_result(info: &MediaInfo) -> Value {
-    json!({"duration":info.duration.seconds(),"width":info.video.as_ref().map(|v| v.width).unwrap_or(0),
-        "height":info.video.as_ref().map(|v| v.height).unwrap_or(0),"fps":info.frame_rate().as_f64(),"hasAudio":info.has_audio(),
+    let image = info.kind == filmcraft_media::MediaKind::Still;
+    let kind = if image {
+        "image"
+    } else if info.has_video() {
+        "video"
+    } else {
+        "audio"
+    };
+    json!({"kind":kind,"duration":if image {0.0} else {info.duration.seconds()},"width":info.video.as_ref().map(|v| v.width).unwrap_or(0),
+        "height":info.video.as_ref().map(|v| v.height).unwrap_or(0),"fps":if image || !info.has_video() {0.0} else {info.frame_rate().as_f64()},"hasAudio":info.has_audio(),
         "videoCodec":info.video.as_ref().map(|v| &v.codec),"audioCodec":info.audio().map(|a| &a.codec)})
 }

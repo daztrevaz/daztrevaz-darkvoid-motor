@@ -471,7 +471,7 @@ async fn authentication_replacement_errors_and_shutdown() {
     let hello = request(&mut first, 1, "hello", json!({})).await;
     assert_eq!(hello["ok"], true);
     assert_eq!(hello["result"]["speech"], true);
-    assert_eq!(hello["result"]["protocol"], 1);
+    assert_eq!(hello["result"]["protocol"], 2);
     let fonts = hello["result"]["fonts"].as_array().unwrap();
     assert!(fonts.iter().any(|f| f == "Inter"));
     assert!(fonts.windows(2).all(|v| v[0].as_str().unwrap() < v[1].as_str().unwrap()));
