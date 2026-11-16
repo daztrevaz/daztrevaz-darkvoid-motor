@@ -160,8 +160,9 @@ impl Motor {
     fn execute(&mut self, command: &str, params: Value) -> Result<Value> {
         match command {
             "hello" => Ok(
-                json!({"version":VERSION,"protocol":2,"fonts":crate::captions::fonts(),"gpu":self.renderer.gpu,"encoders":self.exports.capabilities.names(),"speech":filmcraft_speech::available()}),
+                json!({"version":VERSION,"protocol":3,"fonts":crate::captions::fonts(),"gpu":self.renderer.gpu,"encoders":self.exports.capabilities.names(),"speech":filmcraft_speech::available()}),
             ),
+            "catalog.get" => Ok(crate::catalog::get()),
             "speech.models" => Ok(self.speech.list()),
             "speech.download" => self.speech.download(field(params)?),
             "speech.transcribe" => self.speech.transcribe(&self.session, field(params)?),

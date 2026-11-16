@@ -2,7 +2,7 @@
 use crate::protocol::{Error, Result, error};
 use filmcraft_engine::{FsServices, Session};
 use filmcraft_media::{MediaInfo, MediaKind};
-use filmcraft_project::{ClipId, ItemId, Label, TrackItem};
+use filmcraft_project::{ClipId, ItemId, Label, TrackItem, Transition, TransitionAlign, TransitionId};
 use filmcraft_time::Tick;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -27,6 +27,16 @@ struct Clip {
     fade_out: f64,
     #[serde(default)]
     muted: bool,
+    #[serde(default)]
+    transition_in: Option<TransitionInput>,
+}
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct TransitionInput {
+    id: String,
+    duration: f64,
+    #[serde(default)]
+    params: serde_json::Map<String, Value>,
 }
 #[derive(Deserialize)]
 struct Input {
@@ -86,6 +96,14 @@ impl Timeline {
         let mut ids = HashSet::new();
         for value in input.clips {
             let id = value["id"].as_str().unwrap_or("sem id").to_owned();
+            if let Some(transition) = value.get("transitionIn") {
+                serde_json::from_value::<TransitionInput>(transition.clone()).map_err(|_| crate::catalog::invalid(&id, "transitionIn"))?;
+            }
+            for field in ["color", "look", "effects", "transform", "speed"] {
+                if value.get(field).is_some() {
+                    return Err(crate::catalog::invalid(&id, field));
+                }
+            }
             let c: Clip = serde_json::from_value(value).map_err(|_| invalid(&id, "campos ausentes ou com tipo inválido."))?;
             if c.id.trim().is_empty() || !ids.insert(c.id.clone()) {
                 return Err(invalid(&c.id, "id vazio ou repetido."));
@@ -117,6 +135,21 @@ impl Timeline {
                     > Tick::from_seconds_f64(pair[1].start)
             {
                 return Err(invalid(&pair[1].id, &format!("sobrepõe o clipe '{}' na trilha {}.", pair[0].id, pair[1].track)));
+            }
+        }
+        for (index, c) in clips.iter().enumerate() {
+            if let Some(tr) = &c.transition_in {
+                let previous = index.checked_sub(1).map(|i| &clips[i]);
+                let valid = previous.is_some_and(|p| {
+                    p.track == c.track
+                        && Tick::from_seconds_f64(p.start) + Tick::from_seconds_f64(p.out) - Tick::from_seconds_f64(p.source_in)
+                            == Tick::from_seconds_f64(c.start)
+                        && tr.duration <= (p.out - p.source_in).min(c.out - c.source_in)
+                });
+                if !c.track.starts_with('V') || !valid || !tr.duration.is_finite() || Tick::from_seconds_f64(tr.duration) <= Tick::ZERO {
+                    return Err(crate::catalog::invalid(&c.id, "transitionIn.duration ou encontro com o clipe anterior"));
+                }
+                crate::catalog::transition(&tr.id, &tr.params, &c.id)?;
             }
         }
         let reset = self.format != input.format || self.fps != input.fps || session.active_sequence().is_none();
@@ -205,6 +238,44 @@ impl Timeline {
                     mapping.insert(c.id.clone(), (c.clone(), clip_ids));
                 }
                 filmcraft_edit::overwrite(seq, placements, ctx)?;
+                // Reconstrói os encontros após inserções, remoções e mudanças dos vizinhos.
+                for track in seq.all_tracks_mut() {
+                    track.transitions.clear();
+                }
+                for pair in clips.windows(2) {
+                    let (previous, c) = (&pair[0], &pair[1]);
+                    let Some(input) = &c.transition_in else { continue };
+                    let index = usize::from(c.track.ends_with('2'));
+                    let from = &mapping[&previous.id].1;
+                    let to = &mapping[&c.id].1;
+                    let duration = Tick::from_seconds_f64(input.duration);
+                    let start = Tick::from_seconds_f64(c.start) - Tick(duration.0 / 2);
+                    seq.video_tracks[index].transitions.push(Transition {
+                        id: TransitionId(ctx.alloc()),
+                        effect: crate::catalog::transition(&input.id, &input.params, &c.id).expect("parâmetros já validados"),
+                        start,
+                        duration,
+                        from: Some(from[0]),
+                        to: Some(to[0]),
+                        align: TransitionAlign::CenterAtCut,
+                        reverse: false,
+                    });
+                    // Um lado pode ser imagem ou vídeo sem áudio: nesse caso cruza com silêncio.
+                    let a = from.get(1).copied();
+                    let b = to.get(1).copied();
+                    if a.is_some() || b.is_some() {
+                        seq.audio_tracks[index].transitions.push(Transition {
+                            id: TransitionId(ctx.alloc()),
+                            effect: filmcraft_project::find_effect("constant_gain").expect("cruzamento de áudio").instance(),
+                            start,
+                            duration,
+                            from: a,
+                            to: b,
+                            align: TransitionAlign::CenterAtCut,
+                            reverse: false,
+                        });
+                    }
+                }
                 // As legendas não podem estender a duração definida pelos clipes.
                 let end = clips
                     .iter()
@@ -280,6 +351,39 @@ fn track_item(c: &Clip, item: ItemId, id: ClipId) -> TrackItem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn transition_audio_has_no_hole_at_cut_and_is_block_independent() {
+        let video = fixture();
+        let mut a = clip("a", &video, "V1", 0.0, 2.0);
+        a["in"] = json!(0.5);
+        a["out"] = json!(2.5);
+        let mut b = clip("b", &video, "V1", 2.0, 2.5);
+        b["in"] = json!(0.5);
+        b["transitionIn"] = json!({"id":"transition.cross_dissolve","duration":1.0});
+        let mut s = session();
+        let mut timeline = Timeline::default();
+        timeline.set(&mut s, input(vec![a.clone(), b.clone()])).unwrap();
+        let source = s.media.source_for(&s.project, s.active_sequence().unwrap().video_tracks[0].items[0].item, &*s.services).unwrap();
+        let snapshot = crate::mix::Snapshot::new(&s).unwrap();
+        let read = snapshot.reader(48000);
+        for sample in [84000i64, 95999, 96000, 108000] {
+            let p = (sample as f32 - 72000.0) / 48000.0;
+            let a = source.audio(sample + 24000, 1, 48000).unwrap();
+            let b = source.audio(sample - 72000, 1, 48000).unwrap();
+            let actual = read(sample, 1);
+            for ch in 0..2 {
+                let source_ch = ch.min(a.channels.len() - 1);
+                assert!((actual[ch][0] - (a.channels[source_ch][0] * (1.0 - p) + b.channels[source_ch][0] * p)).abs() < 0.00001);
+            }
+        }
+        let whole = read(72000, 48000);
+        let split: Vec<_> = (0..48000).step_by(137).flat_map(|n| read(72000 + n as i64, (48000 - n).min(137))[0].clone()).collect();
+        assert_eq!(whole[0], split);
+        a["muted"] = json!(true);
+        b["muted"] = json!(true);
+        timeline.set(&mut s, input(vec![a, b])).unwrap();
+        assert!(crate::mix::Snapshot::new(&s).unwrap().reader(48000)(72000, 48000).iter().flatten().all(|sample| *sample == 0.0));
+    }
     fn session() -> Session {
         Session::new(Arc::new(FsServices))
     }

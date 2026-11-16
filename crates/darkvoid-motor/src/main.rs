@@ -2,6 +2,7 @@
 mod audio;
 mod cache;
 mod captions;
+mod catalog;
 mod encoding;
 mod exports;
 mod mix;
@@ -16,6 +17,8 @@ mod timeline;
 
 #[cfg(test)]
 mod measurement;
+#[cfg(test)]
+mod phase3_tests;
 
 use std::{io::Read, path::PathBuf, process::ExitCode};
 use tokio::sync::watch;

@@ -582,7 +582,7 @@ fn push_item(sc: Scene, item: &TrackItem, extra_opacity: f32, blend: Option<Blen
         let motion = motion_matrix(seq, item, size, crate::source_par(project, item.item), mt);
         let lin = ((motion.a * motion.a + motion.b * motion.b).sqrt()).max((motion.c * motion.c + motion.d * motion.d).sqrt());
         let want = (lin * opts.scale as f64).clamp(1.0 / 64.0, 1.0) as f32;
-        let time = crate::video_source_time(item, t, src.info().frame_rate());
+        let time = crate::video_source_time(item, t, src.info().frame_rate()).clamp(Tick::ZERO, (src.info().duration - Tick(1)).max(Tick::ZERO));
         // The GPU turns the frame as decoded, the container's display rotation folded into the
         // layer's matrix or its effect stage: turning a 4K frame on the CPU is too slow to play (#3467).
         let Ok((frame, turns)) = src.video_frame_unturned(FrameRequest { time, scale: want }) else { return };
