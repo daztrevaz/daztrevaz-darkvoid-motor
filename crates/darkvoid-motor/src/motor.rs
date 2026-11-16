@@ -50,6 +50,8 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
     let renderer = Renderer::new(updates.frames.clone(), updates.epoch.clone());
     let ids = Arc::new(AtomicU64::new(1));
     let mut motor = Motor {
+        peaks: crate::peaks::Peaks::new(data_dir.join("cache")),
+        peak_media: None,
         cache: data_dir.join("cache"),
         exports: Exports::new(data_dir.join("cache"), updates.jobs.clone(), ids.clone()),
         speech: crate::speech::Speech::new(data_dir.join("modelos"), updates.jobs.clone(), ids),
@@ -70,8 +72,12 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
         }
         match commands.try_recv() {
             Ok(Command::Request(client, request, reply)) if client == motor.updates.active_client.load(Ordering::Acquire) => {
-                let result = motor.execute(&request.cmd, request.params);
-                let _ = reply.send(protocol::response(request.id, result));
+                if request.cmd == "audio.peaks" {
+                    motor.peaks.request(motor.peak_media.clone(), request.params, request.id, reply);
+                } else {
+                    let result = motor.execute(&request.cmd, request.params);
+                    let _ = reply.send(protocol::response(request.id, result));
+                }
             }
             Ok(Command::Disconnect(client)) if client == motor.updates.active_client.load(Ordering::Acquire) => {
                 motor.pause();
@@ -110,6 +116,8 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
 }
 
 struct Motor {
+    peaks: crate::peaks::Peaks,
+    peak_media: Option<crate::peaks::Media>,
     cache: std::path::PathBuf,
     exports: Exports,
     speech: crate::speech::Speech,
@@ -229,6 +237,7 @@ impl Motor {
         let seq = next.active_sequence().ok_or_else(no_session)?;
         let result = json!({"width":seq.settings.width,"height":seq.settings.height,"fps":seq.settings.frame_rate.as_f64(),"duration":info.duration.seconds()});
         self.pause();
+        self.peak_media = Some(crate::peaks::Media { path: params.path.into(), duration: seq.duration() });
         self.session = next;
         self.time = Tick::ZERO;
         self.invalidate();
