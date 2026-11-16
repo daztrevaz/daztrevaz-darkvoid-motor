@@ -193,7 +193,107 @@ usados há mais tempo. Nunca apaga nada fora do cache.
 
 Erros novos: `timeline_invalid`, `unsupported_media`.
 
-## 8. Regras
+## 8. Versão 3 (Fase 3): transições, cor, looks, efeitos, movimento, velocidade e escala
+
+`hello.protocol` passa a ser `3`. Tudo da versão 2 continua valendo; campos novos ausentes = comportamento
+da v2. Base: medição M3.0 (`docs/m3.0-proposta.md` no motor).
+
+### Catálogo
+
+| Comando | Parâmetros | Resultado |
+| --- | --- | --- |
+| `catalog.get` | `{}` | `{version: 3, revision: string, items: CatalogItem[]}` |
+
+```ts
+type ParamValue = number | boolean | string | number[] | number[][];
+type ParamSpec = {
+  id: string;                       // estável
+  name: string;                     // português do Brasil
+  type: "float" | "bool" | "choice" | "point" | "color" | "curve" | "wheel" | "lut";
+  min: number | null; max: number | null;
+  default: ParamValue | null;
+  defaultFrom?: "frameCenter" | "sourceCenter";
+  choices?: { id: string; name: string }[];
+  animatable: boolean;
+  unit?: string;                    // "%", "px", "°", "s"
+  group?: string;                   // seção do painel (ex.: "Básico", "Curvas", "Rodas de cor")
+};
+type CatalogItem = {
+  id: string;                       // estável, ex.: "transition.cross_dissolve", "look.night"
+  name: string;                     // português do Brasil, sem marcas de terceiros
+  folder: string[];                 // ex.: ["Transições", "Luzes e desfoques"]
+  kind: "transition" | "color" | "look" | "effect" | "transform" | "speed" | "scale";
+  phase: "3a" | "3b";
+  params: ParamSpec[];
+  processing: "gpu" | "cpu" | "mixed";
+  defaultDuration?: number;         // transições (s)
+};
+```
+- O motor só anuncia o que já funciona na versão instalada (itens da 3b só aparecem depois da 3b).
+- A tela não guarda cópia de nomes nem parâmetros: monta galerias e painéis a partir do catálogo.
+- `color.grade` é um item só (`kind: "color"`), com os parâmetros agrupados por `group`
+  (Básico, Criativo, Curvas, Rodas de cor, HSL, Vinheta).
+
+### Campos novos do `Clip`
+
+```ts
+type Keyframe = { time: number; value: ParamValue; interpolation: "linear" | "easeIn" | "easeOut" | "hold" };
+type AnimatedParam = { value: ParamValue; keyframes?: Keyframe[] };
+type Effect = { id: string; instanceId: string; enabled: boolean; params: Record<string, AnimatedParam> };
+
+type Clip = ClipV2 & {
+  transitionIn?: { id: string; duration: number; params?: Record<string, ParamValue> };
+  color?: { enabled: boolean; params: Record<string, ParamValue> };
+  look?: { id: string; intensity: number };            // intensidade 0 a 100 (padrão 100)
+  effects?: Effect[];                                  // ordem = ordem de processamento
+  transform?: {
+    position?: AnimatedParam;                          // [x, y] em pixels do quadro; padrão: centro
+    scale?: AnimatedParam;                             // %, padrão: encaixe da v2 (100)
+    rotation?: AnimatedParam;                          // graus (só quando o catálogo anunciar)
+    opacity?: AnimatedParam;                           // %, 0 a 100, padrão 100
+  };
+  speed?: number;                                      // 0,25 a 4, padrão 1; sem reverso
+};
+```
+- **Transição** (`transitionIn`): pertence ao encontro com o clipe anterior **na mesma trilha** e
+  **encostado** nele (fim do anterior = início deste). Centrada no corte: metade antes, metade depois.
+  Usa o trecho do arquivo além do `out` do anterior e antes do `in` deste; onde o arquivo não tem esse
+  trecho (imagem, começo ou fim do arquivo), o motor **repete o quadro da borda**. Duração > 0 e no
+  máximo a menor das duas durações de clipe. Áudio dos dois clipes cruza suave durante a transição.
+  Sem clipe anterior encostado: `timeline_invalid`.
+- **Ordem de processamento:** cor → look → efeitos (na ordem da lista) → transformação/opacidade →
+  transição entre os dois resultados. Copiar e colar entre clipes dá o mesmo resultado.
+- **Velocidade:** `in`/`out` continuam em tempo do arquivo; a duração do clipe na linha do tempo passa
+  a ser `(out - in) / speed`. O som acompanha **sem mudar o tom**. Sobreposição é validada com a
+  duração nova. Fades de volume valem no tempo da linha do tempo.
+- **Pontos-chave:** `time` em segundos **do arquivo** (mesmo domínio de `in`/`out`), como o engine.
+  Assim cortar, aparar e dividir um clipe não mexe nos pontos. Depois do último ponto vale o valor dele;
+  antes do primeiro, o valor do primeiro. Sem `keyframes`, vale `value`.
+- **LUT:** o parâmetro `lut` (tipo `"lut"`) recebe o **caminho do arquivo `.cube`** escolhido pela
+  pessoa. O motor valida (até 16 MB, tamanho de 2 a 65 pontos, só números finitos), guarda em cache
+  pelo conteúdo e reaproveita. Inválido: `lut_invalid`. Sumiu do disco: `media_not_found`.
+- Validação: parâmetro desconhecido, tipo errado, fora da faixa, pontos-chave fora de ordem ou com
+  tempo repetido, item que o catálogo não anuncia → `timeline_invalid` dizendo o clipe e o campo.
+
+### Exportação
+
+`export.start` aceita `scale?: {method: "classic", sharpness: number}` (nitidez 0 a 100, padrão 0),
+usado quando a resolução de saída é maior que a do arquivo: redimensionamento de alta qualidade
+(Lanczos ou equivalente) e nitidez leve depois da escala. Só vale quando o catálogo anunciar o item
+`scale.classic`; antes disso, ignorado. Outros métodos (ex.: IA local) só entram se o responsável
+humano pedir e as regras dos dois repositórios mudarem.
+
+### Osciloscópios (opcionais)
+
+| Comando | Parâmetros | Resultado |
+| --- | --- | --- |
+| `scopes.get` | `{kinds: ("waveform" \| "vectorscope")[]}` | `{waveform?: string, vectorscope?: string}` (PNG em base64, do quadro atual) |
+
+A tela pede no máximo 10 vezes por segundo e nunca no modo leve.
+
+Erros novos: `lut_invalid`.
+
+## 9. Regras
 
 - O motor só lê os caminhos que a tela manda e só grava no caminho de exportação pedido e dentro
   de `--data-dir`.
