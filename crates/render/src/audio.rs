@@ -119,7 +119,7 @@ pub(crate) fn track_input_at(
         // Re-mix: recompute the covered samples with crossfade gains. Both sides play over the
         // whole transition, into their handles as the picture does, so a transition centred on a
         // cut overlaps the two clips instead of only fading each on its own side of the cut.
-        let (from_src, to_src) = (tr.from.and_then(|id| track.item(id)), tr.to.and_then(|id| track.item(id)));
+        let (from_src, to_src) = (tr.from.and_then(|id| track.item(id)).filter(|i| i.enabled), tr.to.and_then(|id| track.item(id)).filter(|i| i.enabled));
         let from = from_src.map(|i| with_handles(i, tr.start, tr.end()));
         let to = to_src.map(|i| with_handles(i, tr.start, tr.end()));
         let s0 = tr.start.to_units_floor(sr as i64).max(start);
@@ -238,7 +238,8 @@ fn mix_item(project: &Project, item: &TrackItem, timing: &TrackItem, win: Window
     let chv = item.effect("channel_volume").filter(|e| e.enabled && !e.param("bypass").and_then(|p| p.value.as_bool()).unwrap_or(false));
     let pan = item.effect("panner").filter(|e| e.enabled);
     let off = (a0 - start) as usize;
-    let envelope = clip_envelope(timing, sr);
+    // O envelope cobre também os handles; usar o corte original zerava o áudio no encontro.
+    let envelope = clip_envelope(item, sr);
     // Gains change on an absolute 64-sample grid, so the output does not depend on how callers cut
     // the timeline into requests.
     let mut blk = 0usize;

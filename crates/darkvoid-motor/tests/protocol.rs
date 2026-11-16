@@ -16,6 +16,42 @@ mod media_cases;
 mod timeline_cases;
 const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+#[tokio::test]
+async fn catalog_transitions_render_via_timeline_set() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = dir.path().join("a.png");
+    let b = dir.path().join("b.png");
+    for (path, reverse) in [(&a, false), (&b, true)] {
+        image::RgbImage::from_fn(96, 54, |x, y| {
+            let x = if reverse { 95 - x } else { x };
+            image::Rgb([(20 + x * 2) as u8, (20 + y * 4) as u8, if (x / 8 + y / 8) % 2 == 0 { 40 } else { 210 }])
+        })
+        .save(path)
+        .unwrap();
+    }
+    let mut motor = Motor::start();
+    let mut socket = motor.connect().await;
+    assert_eq!(request(&mut socket, 1, "hello", json!({})).await["result"]["protocol"], 3);
+    let catalog = request(&mut socket, 2, "catalog.get", json!({})).await;
+    let items = catalog["result"]["items"].as_array().unwrap();
+    assert_eq!(items.len(), 50);
+    assert_eq!(request(&mut socket, 3, "preview.config", json!({"maxWidth":96,"maxHeight":54,"quality":95})).await["ok"], true);
+    let base = json!({"format":"horizontal","clips":[
+        {"id":"a","media":a,"track":"V1","start":0,"in":0,"out":2,"volume":1,"fadeIn":0,"fadeOut":0},
+        {"id":"b","media":b,"track":"V1","start":2,"in":0,"out":2,"volume":1,"fadeIn":0,"fadeOut":0}
+    ]});
+    command_frame(&mut socket, 4, "timeline.set", base.clone()).await;
+    let baseline = command_frame(&mut socket, 5, "transport.seek", json!({"seconds":1.8})).await;
+    for item in items {
+        let mut params = base.clone();
+        params["clips"][1]["transitionIn"] = json!({"id":item["id"],"duration":1});
+        let rendered = command_frame(&mut socket, 6, "timeline.set", params).await;
+        assert_ne!(rendered, baseline, "{}", item["id"]);
+    }
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+}
+
 struct Motor {
     child: Child,
     port: u16,
@@ -474,7 +510,7 @@ async fn authentication_replacement_errors_and_shutdown() {
     let hello = request(&mut first, 1, "hello", json!({})).await;
     assert_eq!(hello["ok"], true);
     assert_eq!(hello["result"]["speech"], true);
-    assert_eq!(hello["result"]["protocol"], 2);
+    assert_eq!(hello["result"]["protocol"], 3);
     let fonts = hello["result"]["fonts"].as_array().unwrap();
     assert!(fonts.iter().any(|f| f == "Inter"));
     assert!(fonts.windows(2).all(|v| v[0].as_str().unwrap() < v[1].as_str().unwrap()));
