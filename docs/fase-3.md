@@ -30,6 +30,32 @@ Dividida em duas entregas:
 - **Pontos-chave** com interpolação linear, suave (entrada/saída) e parada; o editor de curvas de
   velocidade completo fica de fora.
 
+## Decisões depois da M3.0 (16/11)
+
+- **50 transições na 3a**, tiradas das 74 aprovadas na M3.0 (todas com prévia igual à exportação).
+  **Sem novas medições:** a M3.0 basta. Se alguma travar ou ficar pesada no uso, DTRZ pede e ela sai
+  do catálogo.
+- Ficam de fora: corte suave por análise (`morph_cut`), ferramentas inteligentes (`motion_camera`,
+  `motion_tween`, `shape_flow`, `shape_dissolve`) e as demais não listadas.
+- Rotação só entra quando a divergência for corrigida. Upscale clássico precisa de filtro novo (M3.4).
+- Intensidade dos looks (0 a 100%) é trabalho da M3.2.
+- Contrato: seção 8 de `protocolo-motor.md` (versão 3).
+
+### As 50 transições
+
+| Pasta | ID interno do engine → nome na tela |
+| --- | --- |
+| Dissoluções (9) | `cross_dissolve` Dissolução cruzada · `dip_to_black` Passagem pelo preto · `dip_to_white` Passagem pelo branco · `dip_to_color` Passagem por cor · `blur_dissolve` Dissolução com desfoque · `additive_dissolve` Dissolução aditiva · `film_dissolve` Dissolução de filme · `luma_fade` Dissolução por brilho · `mosaic_transition` Mosaico |
+| Animação (6) | `flip_motion` Virar · `fold_motion` Dobrar · `pop_motion` Saltar · `spin_motion` Girar · `spring_motion` Mola · `travel_motion` Viagem |
+| Luzes e desfoques (11) | `cross_zoom` Zoom cruzado · `zoom_blur` Desfoque de zoom · `radial_blur` Desfoque radial · `directional_blur_transition` Desfoque direcional · `lens_blur` Desfoque de lente · `flash` Clarão · `flare` Reflexo de lente · `glow` Brilho · `light_leak` Vazamento de luz · `light_sweep` Varredura de luz · `chroma_leak` Vazamento de cor |
+| Distorções (8) | `glitch` Falha digital · `vhs_damage` Fita VHS · `tv_power` TV desligando · `earthquake` Terremoto · `flicker` Tremulação · `glass` Vidro · `kaleidoscope` Caleidoscópio · `liquid_distortion` Distorção líquida |
+| Deslocamentos (6) | `push` Empurrar · `slide` Deslizar · `split` Dividir · `whip` Chicote · `roll` Rolar · `stretch` Esticar |
+| Transformações (5) | `spin_3d` Giro 3D · `page_peel` Virar página · `louver` Persiana · `slice` Fatiar · `wave` Onda |
+| Varreduras (5) | `linear_wipe` Varredura linear · `soft_wipe` Varredura suave · `radial_wipe` Varredura radial · `clock_wipe` Relógio · `star_wipe` Estrela |
+
+IDs públicos: `transition.<id interno>`, exceto `mosaic_transition` → `transition.mosaic` e
+`directional_blur_transition` → `transition.directional_blur`.
+
 ## Ordem e dependências
 
 ```
@@ -60,8 +86,9 @@ M3.0 (Codex: medição e proposta) ──► I3.1 (Claude: contrato v3 + simulad
 ### M3.1 · Transições (Codex)
 - Transições da lista curada entre clipes vizinhos da mesma trilha, com duração e parâmetros;
   sobreposição dos dois clipes durante a transição; áudio com cruzamento suave.
-- Aceite: 5 transições diferentes num projeto, prévia sem engasgar a 30 qps em 1080p, exportação
-  igual à prévia (comparação de quadros), testes automáticos.
+- As 50 transições da lista acima, com `catalog.get`, nomes e parâmetros em português.
+- Aceite: as 50 aplicáveis por `timeline.set` (teste automático de cada uma: aplica, renderiza,
+  muda a imagem); projeto com 5 transições exporta sem erro. Sem refazer a medição de paridade da M3.0.
 
 ### M3.2 · Cor e filtros (Codex)
 - Correção básica, criativo (looks com intensidade, filme desbotado, nitidez, vibração), curvas,
