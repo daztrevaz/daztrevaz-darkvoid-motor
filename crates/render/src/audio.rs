@@ -238,6 +238,7 @@ fn mix_item(project: &Project, item: &TrackItem, timing: &TrackItem, win: Window
     let chv = item.effect("channel_volume").filter(|e| e.enabled && !e.param("bypass").and_then(|p| p.value.as_bool()).unwrap_or(false));
     let pan = item.effect("panner").filter(|e| e.enabled);
     let off = (a0 - start) as usize;
+    let envelope = clip_envelope(timing, sr);
     // Gains change on an absolute 64-sample grid, so the output does not depend on how callers cut
     // the timeline into requests.
     let mut blk = 0usize;
@@ -262,8 +263,9 @@ fn mix_item(project: &Project, item: &TrackItem, timing: &TrackItem, win: Window
         if w == 2 {
             for i in blk..end {
                 let (l, r) = (buf[0][i], buf[1][i]);
-                out.channels[0][off + i] += l * g * cl * pl;
-                out.channels[1][off + i] += r * g * cr * pr;
+                let gain = envelope(a0 + i as i64);
+                out.channels[0][off + i] += l * g * cl * pl * gain;
+                out.channels[1][off + i] += r * g * cr * pr * gain;
             }
         } else {
             for (c, (dst, src)) in out.channels.iter_mut().zip(&buf).enumerate() {
@@ -273,11 +275,27 @@ fn mix_item(project: &Project, item: &TrackItem, timing: &TrackItem, win: Window
                     _ => 1.0,
                 };
                 for i in blk..end {
-                    dst[off + i] += src[i] * gc;
+                    dst[off + i] += src[i] * gc * envelope(a0 + i as i64);
                 }
             }
         }
         blk = end;
+    }
+}
+
+/// Optional linear-amplitude ramps on Volume, evaluated at each sequence sample.
+/// Missing parameters preserve existing clips. Overlapping ramps multiply.
+fn clip_envelope(item: &TrackItem, rate: u32) -> impl Fn(i64) -> f32 {
+    let volume = item.effect("volume").filter(|e| e.enabled);
+    let value = |name| volume.map(|v| v.f64_at(name, Tick::ZERO)).unwrap_or(0.0).max(0.0);
+    let declick = value("declick_seconds").min(item.duration.seconds() * 0.5);
+    let fade_in = value("fade_in_seconds").max(declick) * rate as f64;
+    let fade_out = value("fade_out_seconds").max(declick) * rate as f64;
+    let start = item.start.to_units_floor(rate as i64);
+    let end = item.end().to_units_floor(rate as i64) - 1;
+    move |sample| {
+        let ramp = |distance: i64, length: f64| if length > 0.0 { (distance as f64 / length).clamp(0.0, 1.0) as f32 } else { 1.0 };
+        ramp(sample - start, fade_in) * ramp(end - sample, fade_out)
     }
 }
 

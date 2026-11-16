@@ -34,10 +34,16 @@ struct Params {
     buckets: usize,
 }
 struct Request {
-    media: Media,
+    media: Input,
     buckets: usize,
     id: Value,
     reply: oneshot::Sender<Value>,
+}
+
+#[derive(Clone)]
+pub enum Input {
+    File(Media),
+    Timeline(crate::mix::Snapshot),
 }
 
 pub struct Peaks {
@@ -62,11 +68,15 @@ impl Peaks {
                         continue;
                     }
                     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        let key = fingerprint(&request.media)?;
+                        let media = match &request.media {
+                            Input::Timeline(snapshot) => return timeline_peaks(snapshot, request.buckets, &cancelled),
+                            Input::File(media) => media,
+                        };
+                        let key = fingerprint(media)?;
                         if cached.as_ref().is_none_or(|c| c.key != key) {
                             cached = None;
                             let path = directory.join(format!("peaks-v1-{key:016x}.bin"));
-                            cached = Some(Envelope::load(&path, key, request.media.duration).or_else(|_| calculate(&request.media, &path, key, &cancelled))?);
+                            cached = Some(Envelope::load(&path, key, media.duration).or_else(|_| calculate(media, &path, key, &cancelled))?);
                         }
                         let envelope = cached.as_mut().ok_or_else(failed)?;
                         let peaks = envelope.buckets(request.buckets)?;
@@ -80,8 +90,11 @@ impl Peaks {
         Self { queue: worker.as_ref().map(|_| tx), worker, stop }
     }
     pub fn request(&self, media: Option<Media>, params: Value, id: Value, reply: oneshot::Sender<Value>) {
+        self.request_input(media.map(Input::File).ok_or_else(|| error("no_session", "Abra um vídeo antes de calcular a onda de áudio.")), params, id, reply);
+    }
+    pub fn request_input(&self, media: Result<Input>, params: Value, id: Value, reply: oneshot::Sender<Value>) {
         let validated = (|| {
-            let media = media.ok_or_else(|| error("no_session", "Abra um vídeo antes de calcular a onda de áudio."))?;
+            let media = media?;
             let params: Params = protocol::field(params)?;
             if !(1..=20000).contains(&params.buckets) {
                 return Err(protocol::invalid());
@@ -108,6 +121,26 @@ impl Peaks {
             }
         }
     }
+}
+
+fn timeline_peaks(snapshot: &crate::mix::Snapshot, buckets: usize, stop: &AtomicBool) -> Result<Value> {
+    let rate = 48_000;
+    let count = sample_count(snapshot.duration, rate);
+    let read = snapshot.reader(rate);
+    let mut peaks = vec![0.0f32; buckets];
+    for start in (0..count).step_by(4096) {
+        cancelled(stop)?;
+        let channels = read(start as i64, (count - start).min(4096));
+        for channel in channels {
+            for (offset, sample) in channel.into_iter().enumerate() {
+                let bucket = ((start + offset) as u128 * buckets as u128 * TICKS_PER_SECOND as u128 / (snapshot.duration.0 as u128 * rate as u128)) as usize;
+                if let Some(peak) = peaks.get_mut(bucket) {
+                    *peak = peak.max(sample.abs().min(1.0));
+                }
+            }
+        }
+    }
+    Ok(json!({"peaks":peaks}))
 }
 impl Drop for Peaks {
     fn drop(&mut self) {

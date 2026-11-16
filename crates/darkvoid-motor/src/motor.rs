@@ -73,8 +73,13 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
         }
         match commands.try_recv() {
             Ok(Command::Request(client, request, reply)) if client == motor.updates.active_client.load(Ordering::Acquire) => {
-                if request.cmd == "audio.peaks" && !motor.timeline.is_active() {
-                    motor.peaks.request(motor.peak_media.clone(), request.params, request.id, reply);
+                if request.cmd == "audio.peaks" {
+                    if request.params.get("media").is_none() && !motor.timeline.is_active() {
+                        motor.peaks.request(motor.peak_media.clone(), request.params, request.id, reply);
+                    } else {
+                        let input = motor.peak_input(&request.params);
+                        motor.peaks.request_input(input, request.params, request.id, reply);
+                    }
                 } else {
                     let result = motor.execute(&request.cmd, request.params);
                     let _ = reply.send(protocol::response(request.id, result));
@@ -132,6 +137,15 @@ struct Motor {
     last_frame: i64,
 }
 impl Motor {
+    fn peak_input(&self, params: &Value) -> Result<crate::peaks::Input> {
+        if let Some(media) = params.get("media") {
+            let path = media.as_str().ok_or_else(protocol::invalid)?;
+            let info = self.probe(path)?;
+            Ok(crate::peaks::Input::File(crate::peaks::Media { path: path.into(), duration: info.duration }))
+        } else {
+            Ok(crate::peaks::Input::Timeline(crate::mix::Snapshot::new(&self.session)?))
+        }
+    }
     fn execute(&mut self, command: &str, params: Value) -> Result<Value> {
         match command {
             "hello" => Ok(
@@ -139,9 +153,6 @@ impl Motor {
             ),
             "speech.models" => Ok(self.speech.list()),
             "speech.download" => self.speech.download(field(params)?),
-            "audio.peaks" | "speech.transcribe" if self.timeline.is_active() => {
-                Err(error("unsupported_operation", "A onda de áudio e a transcrição da linha do tempo estarão disponíveis na etapa M2.2."))
-            }
             "speech.transcribe" => self.speech.transcribe(&self.session, field(params)?),
             "export.start" => self.exports.start(&self.session, field(params)?),
             "captions.set" => {

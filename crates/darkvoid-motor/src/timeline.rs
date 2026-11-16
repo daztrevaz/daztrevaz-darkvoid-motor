@@ -190,15 +190,14 @@ impl Timeline {
                     let id = old.and_then(|(_, ids)| ids.first()).copied().unwrap_or_else(|| ClipId(ctx.alloc()));
                     let mut item = track_item(c, media[&c.media].item, id);
                     let track = if video { seq.video_tracks[index].id } else { seq.audio_tracks[index + 2].id };
-                    // A1/A2 são mantidas para a duração; sua mistura pertence à M2.2.
-                    item.enabled = video;
+                    item.enabled = video || (!c.muted && c.volume > 0.0);
                     clip_ids.push(id);
                     if video && media[&c.media].info.has_audio() {
                         let audio_id = old.and_then(|(_, ids)| ids.get(1)).copied().unwrap_or_else(|| ClipId(ctx.alloc()));
                         let mut audio = item.clone();
                         audio.id = audio_id;
                         audio.scale_to_frame = false;
-                        audio.enabled = !c.muted;
+                        audio.enabled = !c.muted && c.volume > 0.0;
                         placements.push((seq.audio_tracks[index].id, audio));
                         clip_ids.push(audio_id);
                     }
@@ -243,6 +242,10 @@ fn engine_error(_: filmcraft_engine::EngineError) -> Error {
 }
 
 fn track_item(c: &Clip, item: ItemId, id: ClipId) -> TrackItem {
+    let mut volume = filmcraft_project::find_effect("volume").expect("efeito intrínseco de volume").instance();
+    for (name, value) in [("fade_in_seconds", c.fade_in), ("fade_out_seconds", c.fade_out), ("declick_seconds", 0.003)] {
+        volume.params.insert(name.into(), filmcraft_project::Param::new(filmcraft_project::ParamValue::Float(value)));
+    }
     TrackItem {
         id,
         item,
@@ -257,9 +260,9 @@ fn track_item(c: &Clip, item: ItemId, id: ClipId) -> TrackItem {
         enabled: true,
         link: None,
         group: None,
-        effects: vec![],
+        effects: vec![volume],
         markers: vec![],
-        gain_db: 0.0,
+        gain_db: if c.volume > 0.0 { 20.0 * c.volume.log10() } else { -96.0 },
         frame_hold: None,
         scale_to_frame: c.track.starts_with('V'),
         essential: None,
@@ -279,6 +282,100 @@ mod tests {
     use super::*;
     fn session() -> Session {
         Session::new(Arc::new(FsServices))
+    }
+    fn constant_audio(path: &std::path::Path) {
+        let samples = vec![0.25f32; 3 * 48000];
+        let data: Vec<_> = samples.into_iter().flat_map(f32::to_le_bytes).collect();
+        let mut wav = b"RIFF".to_vec();
+        wav.extend((36 + data.len() as u32).to_le_bytes());
+        wav.extend(b"WAVEfmt ");
+        wav.extend(16u32.to_le_bytes());
+        wav.extend(3u16.to_le_bytes());
+        wav.extend(1u16.to_le_bytes());
+        wav.extend(48000u32.to_le_bytes());
+        wav.extend(192000u32.to_le_bytes());
+        wav.extend(4u16.to_le_bytes());
+        wav.extend(32u16.to_le_bytes());
+        wav.extend(b"data");
+        wav.extend((data.len() as u32).to_le_bytes());
+        wav.extend(data);
+        std::fs::write(path, wav).unwrap();
+    }
+    #[test]
+    fn four_tracks_mix_linear_fades_gain_mute_and_snapshot_updates() {
+        let dir = tempfile::tempdir().unwrap();
+        let music = dir.path().join("music.wav");
+        constant_audio(&music);
+        let mut s = session();
+        let mut timeline = Timeline::default();
+        let mut v1 = clip("video1", &fixture(), "V1", 0.0, 2.0);
+        v1["volume"] = json!(0.4);
+        let mut v2 = v1.clone();
+        v2["id"] = json!("video2");
+        v2["track"] = json!("V2");
+        let mut a1 = clip("musica", &music, "A1", 0.5, 2.25);
+        a1["in"] = json!(0.25);
+        a1["volume"] = json!(0.3);
+        a1["fadeIn"] = json!(0.5);
+        a1["fadeOut"] = json!(1.0);
+        let mut a2 = clip("audio2", &music, "A2", 0.5, 2.0);
+        a2["volume"] = json!(2.0);
+        let mut params = input(vec![v1, v2, a1, a2]);
+        timeline.set(&mut s, params.clone()).unwrap();
+        let before = crate::mix::Snapshot::new(&s).unwrap();
+        let read = before.reader(48000);
+        let video = s.media.source_for(&s.project, s.active_sequence().unwrap().video_tracks[0].items[0].item, &*s.services).unwrap();
+        for sample in [26400, 36000, 48000, 72000, 90000] {
+            let time = sample as f64 / 48000.0;
+            let expected_music = 0.25 * 0.3 * ((time - 0.5) / 0.5).min(1.0) * ((2.5 - 1.0 / 48000.0 - time) / 1.0).min(1.0);
+            let original = video.audio(sample, 1, 48000).unwrap();
+            let actual = read(sample, 1);
+            for (channel, source) in actual.iter().zip(&original.channels) {
+                assert!((channel[0] as f64 - (source[0] as f64 * 0.8 + expected_music + 0.5)).abs() < 0.00001);
+            }
+        }
+        // O mesmo intervalo dividido em blocos preserva as amostras e as bordas silenciosas.
+        let whole = read(0, 120000);
+        let split: Vec<_> = (0..120000).step_by(137).flat_map(|start| read(start as i64, (120000 - start).min(137))[0].clone()).collect();
+        assert_eq!(whole[0], split);
+        assert_eq!(whole[0][0], 0.0);
+        assert_eq!(whole[0][119999], 0.0);
+        for c in params["clips"].as_array_mut().unwrap() {
+            c["muted"] = json!(true);
+        }
+        timeline.set(&mut s, params.clone()).unwrap();
+        assert!(crate::mix::Snapshot::new(&s).unwrap().reader(48000)(36000, 100)[0].iter().all(|v| *v == 0.0));
+        assert_eq!(read(36000, 100)[0], whole[0][36000..36100], "snapshot anterior preservado");
+        for c in params["clips"].as_array_mut().unwrap() {
+            c["muted"] = json!(false);
+            c["volume"] = json!(0.0);
+        }
+        timeline.set(&mut s, params).unwrap();
+        assert!(crate::mix::Snapshot::new(&s).unwrap().reader(44100)(33075, 100)[0].iter().all(|v| *v == 0.0));
+    }
+    #[test]
+    fn cuts_declick_and_overlapping_fades_are_sample_accurate() {
+        let dir = tempfile::tempdir().unwrap();
+        let media = dir.path().join("constant.wav");
+        constant_audio(&media);
+        let mut s = session();
+        let mut timeline = Timeline::default();
+        let mut a = clip("a", &media, "A1", 0.0, 1.0);
+        a["volume"] = json!(2.0);
+        let b = clip("b", &media, "A1", 1.0, 1.0);
+        timeline.set(&mut s, input(vec![a.clone(), b])).unwrap();
+        for rate in [16000, 44100, 48000] {
+            let audio = crate::mix::Snapshot::new(&s).unwrap().reader(rate)(0, 2 * rate as usize);
+            let maximum_jump = audio[0].windows(2).map(|s| (s[1] - s[0]).abs()).fold(0.0f32, f32::max);
+            assert!(maximum_jump <= 0.5 / (rate as f32 * 0.003) + 0.00001);
+            assert_eq!(audio[0][rate as usize - 1], 0.0);
+            assert_eq!(audio[0][rate as usize], 0.0);
+        }
+        a["fadeIn"] = json!(1.0);
+        a["fadeOut"] = json!(1.0);
+        timeline.set(&mut s, input(vec![a])).unwrap();
+        let midpoint = crate::mix::Snapshot::new(&s).unwrap().reader(48000)(24000, 1)[0][0];
+        assert!((midpoint - 0.5 * 0.5 * (0.5 - 1.0 / 48000.0)).abs() < 0.000001);
     }
     fn clip(id: &str, media: &std::path::Path, track: &str, start: f64, end: f64) -> Value {
         json!({"id":id,"media":media,"track":track,"start":start,"in":0,"out":end,"volume":1,"fadeIn":0,"fadeOut":0})

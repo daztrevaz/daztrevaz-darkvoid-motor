@@ -53,10 +53,10 @@ async fn timeline_probe_images_audio_preserves_config_playhead_and_captions() {
     assert_eq!(request(&mut socket, 3, "preview.config", json!({"maxWidth":320,"maxHeight":180,"quality":85})).await["ok"], true);
     assert_eq!(request(&mut socket, 4, "timeline.set", p.clone()).await["ok"], true);
     assert_eq!(frame(&mut socket, 0.0).await, (320, 180));
-    for command in ["audio.peaks", "speech.transcribe"] {
-        let result = request(&mut socket, 40, command, json!({})).await;
-        assert_eq!(result["error"]["code"], "unsupported_operation");
-    }
+    let peaks = request(&mut socket, 40, "audio.peaks", json!({"buckets":30})).await;
+    assert_eq!(peaks["ok"], true, "{peaks}");
+    let speech = request(&mut socket, 40, "speech.transcribe", json!({"model":"whisper-small","language":"pt"})).await;
+    assert_eq!(speech["error"]["code"], "model_not_installed");
     assert_eq!(request(&mut socket, 5, "transport.seek", json!({"seconds":1.0})).await["ok"], true);
     frame(&mut socket, 1.0).await;
     command_frame(&mut socket, 6, "captions.set", caption_cases::captions("phrase", 3)).await;
