@@ -254,6 +254,23 @@ fn keyframes_keep_media_time_and_validate_atomically() {
 }
 
 #[test]
+fn unchanged_automatic_points_preserve_the_project_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("padrao.png");
+    fixture(&path);
+    let mut s = session();
+    let mut timeline = crate::timeline::Timeline::default();
+    let mut c = clip(&path);
+    c["transform"] = json!({"scale":{"value":110}});
+    c["effects"] = json!([{"id":"effect.corner_pin","instanceId":"one","enabled":true,"params":{}}]);
+    let params = input(vec![c]);
+    timeline.set(&mut s, params.clone()).unwrap();
+    let snapshot = s.project.clone();
+    timeline.set(&mut s, params).unwrap();
+    assert!(Arc::ptr_eq(&snapshot, &s.project));
+}
+
+#[test]
 fn speed_updates_duration_overlap_and_preserves_audio_pitch() {
     let video = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/padrao.mp4");
     let mut s = session();

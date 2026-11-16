@@ -183,14 +183,16 @@ impl Timeline {
         }
         let reset = self.format != input.format || self.fps != input.fps || session.active_sequence().is_none();
         let mut color_effects = HashMap::new();
+        let mut visual_effects = HashMap::new();
         let mut luts = HashMap::new();
         for c in &clips {
             if !c.track.starts_with('V') && (c.color.is_some() || c.look.is_some() || !c.effects.is_empty() || c.transform.is_some()) {
                 return Err(crate::catalog::invalid(&c.id, "color/look: use uma trilha de vídeo"));
             }
-            let mut prepared = self.lut_cache.prepare(c.color.as_ref(), c.look.as_ref(), &c.id, &mut luts)?;
-            prepared.extend(crate::effects::prepare(&c.effects, c.transform.as_ref(), &c.id)?);
-            color_effects.insert(c.id.clone(), prepared);
+            color_effects.insert(c.id.clone(), self.lut_cache.prepare(c.color.as_ref(), c.look.as_ref(), &c.id, &mut luts)?);
+            // Visual changes are already compared through Clip's finite public input. Engine
+            // automatic coordinates contain NaN and must not invalidate every unchanged clip.
+            visual_effects.insert(c.id.clone(), crate::effects::prepare(&c.effects, c.transform.as_ref(), &c.id)?);
         }
         let mut work = Session::new(Arc::new(FsServices));
         work.services = session.services.clone();
@@ -286,6 +288,7 @@ impl Timeline {
                     }
                     if video {
                         item.effects.extend(color_effects[&c.id].clone());
+                        item.effects.extend(visual_effects[&c.id].clone());
                     }
                     placements.push((track, item));
                     mapping.insert(c.id.clone(), (c.clone(), clip_ids));
