@@ -258,6 +258,42 @@ fn header(w: u32, h: u32, time: Tick) -> Vec<u8> {
     bytes
 }
 
+/// Instrumentação exclusiva dos testes M3.0. Executa as funções reais da prévia.
+#[cfg(test)]
+pub(crate) mod measurement {
+    use super::*;
+
+    pub struct Probe {
+        gpu: Option<(filmcraft_gpu::GpuCompositor, GpuInfo)>,
+    }
+
+    impl Probe {
+        pub fn new(on_gpu: bool) -> Self {
+            let gpu = on_gpu.then(gpu).flatten();
+            assert!(!on_gpu || gpu.is_some(), "M3.0 exige uma GPU real; não aceitar fallback silencioso");
+            Self { gpu }
+        }
+
+        pub fn info(&self) -> serde_json::Value {
+            serde_json::to_value(self.gpu.as_ref().map(|(_, info)| info)).unwrap()
+        }
+
+        pub fn caps(&self) -> filmcraft_render::plan::DeviceCaps {
+            self.gpu.as_ref().unwrap().0.caps()
+        }
+
+        pub fn frame(&mut self, job: &Job) -> (u32, u32, Vec<u8>) {
+            let raw = render(job, &mut self.gpu, &Metrics::default()).expect("quadro da prévia");
+            (raw.w, raw.h, raw.rgba)
+        }
+
+        pub fn delivery(&mut self, job: &Job) -> Vec<u8> {
+            let mut raw = render(job, &mut self.gpu, &Metrics::default()).expect("quadro da prévia");
+            jpeg(&mut raw).expect("JPEG da prévia")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

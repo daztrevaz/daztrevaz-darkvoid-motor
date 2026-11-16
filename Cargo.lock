@@ -693,6 +693,7 @@ dependencies = [
  "filmcraft-platform",
  "filmcraft-project",
  "filmcraft-render",
+ "filmcraft-scopes",
  "filmcraft-speech",
  "filmcraft-text",
  "filmcraft-time",

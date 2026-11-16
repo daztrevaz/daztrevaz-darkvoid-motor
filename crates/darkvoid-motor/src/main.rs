@@ -14,6 +14,9 @@ mod speech;
 mod thumbs;
 mod timeline;
 
+#[cfg(test)]
+mod measurement;
+
 use std::{io::Read, path::PathBuf, process::ExitCode};
 use tokio::sync::watch;
 

@@ -1,0 +1,2186 @@
+{
+  "draft": true,
+  "version": 3,
+  "note": "Proposta para I3.1; não é resposta implementada de catalog.get. Status measured não valida todo o domínio de parâmetros.",
+  "items": [
+    {
+      "id": "transition.cross_dissolve",
+      "engineId": "cross_dissolve",
+      "name": "Dissolução cruzada",
+      "folder": [
+        "Transições",
+        "Dissoluções"
+      ],
+      "phase": "3a",
+      "params": [],
+      "measurementCase": "cross_dissolve",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "transition"
+    },
+    {
+      "id": "transition.dip_to_black",
+      "engineId": "dip_to_black",
+      "name": "Passagem pelo preto",
+      "folder": [
+        "Transições",
+        "Dissoluções"
+      ],
+      "phase": "3a",
+      "params": [],
+      "measurementCase": "dip_to_black",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "transition"
+    },
+    {
+      "id": "transition.dip_to_white",
+      "engineId": "dip_to_white",
+      "name": "Passagem pelo branco",
+      "folder": [
+        "Transições",
+        "Dissoluções"
+      ],
+      "phase": "3a",
+      "params": [],
+      "measurementCase": "dip_to_white",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "transition"
+    },
+    {
+      "id": "transition.dip_to_color",
+      "engineId": "dip_to_color",
+      "name": "Passagem por cor",
+      "folder": [
+        "Transições",
+        "Dissoluções"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "color",
+          "name": "Cor",
+          "type": "color",
+          "min": 0,
+          "max": 1,
+          "default": [
+            0.8500000238418579,
+            0.20000000298023224,
+            0.20000000298023224,
+            1.0
+          ],
+          "animatable": false
+        },
+        {
+          "id": "hold",
+          "name": "Permanência",
+          "type": "float",
+          "min": 0.0,
+          "max": 90.0,
+          "default": 0.0,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "measurementCase": "dip_to_color",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "transition"
+    },
+    {
+      "id": "transition.blur_dissolve",
+      "engineId": "blur_dissolve",
+      "name": "Dissolução com desfoque",
+      "folder": [
+        "Transições",
+        "Dissoluções"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "blur",
+          "name": "Desfoque",
+          "type": "float",
+          "min": 0.0,
+          "max": 400.0,
+          "default": 40.0,
+          "animatable": false,
+          "unit": "px"
+        }
+      ],
+      "measurementCase": "blur_dissolve",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "transition"
+    },
+    {
+      "id": "transition.push",
+      "engineId": "push",
+      "name": "Empurrar",
+      "folder": [
+        "Transições",
+        "Deslocamentos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "direction",
+          "name": "Direção",
+          "type": "choice",
+          "min": null,
+          "max": null,
+          "default": "3",
+          "animatable": false,
+          "choices": [
+            {
+              "id": "0",
+              "name": "De cima"
+            },
+            {
+              "id": "1",
+              "name": "Da direita"
+            },
+            {
+              "id": "2",
+              "name": "De baixo"
+            },
+            {
+              "id": "3",
+              "name": "Da esquerda"
+            }
+          ]
+        },
+        {
+          "id": "motion_blur",
+          "name": "Desfoque de movimento",
+          "type": "float",
+          "min": 0.0,
+          "max": 100.0,
+          "default": 50.0,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "measurementCase": "push",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "transition"
+    },
+    {
+      "id": "transition.slide",
+      "engineId": "slide",
+      "name": "Deslizar",
+      "folder": [
+        "Transições",
+        "Deslocamentos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "direction",
+          "name": "Direção",
+          "type": "choice",
+          "min": null,
+          "max": null,
+          "default": "3",
+          "animatable": false,
+          "choices": [
+            {
+              "id": "0",
+              "name": "De cima"
+            },
+            {
+              "id": "1",
+              "name": "Da direita"
+            },
+            {
+              "id": "2",
+              "name": "De baixo"
+            },
+            {
+              "id": "3",
+              "name": "Da esquerda"
+            }
+          ]
+        },
+        {
+          "id": "motion_blur",
+          "name": "Desfoque de movimento",
+          "type": "float",
+          "min": 0.0,
+          "max": 100.0,
+          "default": 50.0,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "measurementCase": "slide",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "transition"
+    },
+    {
+      "id": "transition.linear_wipe",
+      "engineId": "linear_wipe",
+      "name": "Varredura linear",
+      "folder": [
+        "Transições",
+        "Varreduras"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "angle",
+          "name": "Ângulo",
+          "type": "float",
+          "min": -3600,
+          "max": 3600,
+          "default": 90.0,
+          "animatable": false,
+          "unit": "graus"
+        },
+        {
+          "id": "feather",
+          "name": "Suavidade",
+          "type": "float",
+          "min": 0.0,
+          "max": 2000.0,
+          "default": 0.0,
+          "animatable": false,
+          "unit": "px"
+        },
+        {
+          "id": "border_width",
+          "name": "Largura da borda",
+          "type": "float",
+          "min": 0.0,
+          "max": 200.0,
+          "default": 0.0,
+          "animatable": false,
+          "unit": "px"
+        },
+        {
+          "id": "border_color",
+          "name": "Cor da borda",
+          "type": "color",
+          "min": 0,
+          "max": 1,
+          "default": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "animatable": false
+        },
+        {
+          "id": "antialias",
+          "name": "Suavização de bordas",
+          "type": "choice",
+          "min": null,
+          "max": null,
+          "default": "1",
+          "animatable": false,
+          "choices": [
+            {
+              "id": "0",
+              "name": "Desligado"
+            },
+            {
+              "id": "1",
+              "name": "Baixa"
+            },
+            {
+              "id": "2",
+              "name": "Média"
+            },
+            {
+              "id": "3",
+              "name": "Alta"
+            }
+          ]
+        }
+      ],
+      "measurementCase": "linear_wipe",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "transition"
+    },
+    {
+      "id": "color.grade",
+      "engineId": "lumetri",
+      "name": "Cor",
+      "folder": [
+        "Cor"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "basic_on",
+          "name": "Correção básica",
+          "type": "bool",
+          "min": null,
+          "max": null,
+          "default": true,
+          "animatable": false,
+          "group": "Básico",
+          "measurementCase": "color.basic_on",
+          "status": "pending"
+        },
+        {
+          "id": "input_lut",
+          "name": "LUT de entrada",
+          "type": "lut",
+          "min": null,
+          "max": null,
+          "default": "",
+          "animatable": false,
+          "group": "Básico",
+          "measurementCase": "lut.cube",
+          "status": "measured"
+        },
+        {
+          "id": "temperature",
+          "name": "Temperatura",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Básico",
+          "measurementCase": "color.temperature",
+          "status": "measured"
+        },
+        {
+          "id": "tint",
+          "name": "Matiz verde e magenta",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Básico",
+          "measurementCase": "color.tint",
+          "status": "measured"
+        },
+        {
+          "id": "exposure",
+          "name": "Exposição",
+          "type": "float",
+          "min": -5.0,
+          "max": 5.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Básico",
+          "measurementCase": "color.exposure",
+          "status": "measured"
+        },
+        {
+          "id": "contrast",
+          "name": "Contraste",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Básico",
+          "measurementCase": "color.contrast",
+          "status": "measured"
+        },
+        {
+          "id": "highlights",
+          "name": "Realces",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Básico",
+          "measurementCase": "color.highlights",
+          "status": "measured"
+        },
+        {
+          "id": "shadows",
+          "name": "Sombras",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Básico",
+          "measurementCase": "color.shadows",
+          "status": "measured"
+        },
+        {
+          "id": "whites",
+          "name": "Brancos",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Básico",
+          "measurementCase": "color.whites",
+          "status": "measured"
+        },
+        {
+          "id": "blacks",
+          "name": "Pretos",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Básico",
+          "measurementCase": "color.blacks",
+          "status": "measured"
+        },
+        {
+          "id": "saturation",
+          "name": "Saturação",
+          "type": "float",
+          "min": 0.0,
+          "max": 200.0,
+          "default": 100.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Básico",
+          "measurementCase": "color.saturation",
+          "status": "measured"
+        },
+        {
+          "id": "creative_on",
+          "name": "Criativo",
+          "type": "bool",
+          "min": null,
+          "max": null,
+          "default": true,
+          "animatable": false,
+          "group": "Criativo",
+          "measurementCase": "color.creative_on",
+          "status": "pending"
+        },
+        {
+          "id": "faded_film",
+          "name": "Filme desbotado",
+          "type": "float",
+          "min": 0.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Criativo",
+          "measurementCase": "color.faded_film",
+          "status": "measured"
+        },
+        {
+          "id": "sharpen",
+          "name": "Nitidez",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Criativo",
+          "measurementCase": "color.sharpen",
+          "status": "measured"
+        },
+        {
+          "id": "vibrance",
+          "name": "Vivacidade",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Criativo",
+          "measurementCase": "color.vibrance",
+          "status": "measured"
+        },
+        {
+          "id": "creative_sat",
+          "name": "Saturação criativa",
+          "type": "float",
+          "min": 0.0,
+          "max": 200.0,
+          "default": 100.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Criativo",
+          "measurementCase": "color.creative_sat",
+          "status": "measured"
+        },
+        {
+          "id": "shadow_tint",
+          "name": "Coloração das sombras",
+          "type": "color",
+          "min": 0,
+          "max": 1,
+          "default": [
+            0.5,
+            0.5,
+            0.5,
+            1.0
+          ],
+          "animatable": true,
+          "group": "Criativo",
+          "measurementCase": "color.shadow_tint",
+          "status": "measured"
+        },
+        {
+          "id": "highlight_tint",
+          "name": "Coloração dos realces",
+          "type": "color",
+          "min": 0,
+          "max": 1,
+          "default": [
+            0.5,
+            0.5,
+            0.5,
+            1.0
+          ],
+          "animatable": true,
+          "group": "Criativo",
+          "measurementCase": "color.highlight_tint",
+          "status": "measured"
+        },
+        {
+          "id": "curves_on",
+          "name": "Curvas",
+          "type": "bool",
+          "min": null,
+          "max": null,
+          "default": true,
+          "animatable": false,
+          "group": "Curvas",
+          "measurementCase": "color.curves_on",
+          "status": "pending"
+        },
+        {
+          "id": "curve_luma",
+          "name": "Curva de luminância",
+          "type": "curve",
+          "min": 0,
+          "max": 1,
+          "default": [
+            [
+              0.0,
+              0.0
+            ],
+            [
+              1.0,
+              1.0
+            ]
+          ],
+          "animatable": false,
+          "hue": false,
+          "group": "Curvas",
+          "measurementCase": "color.curve_luma",
+          "status": "measured"
+        },
+        {
+          "id": "curve_red",
+          "name": "Curva vermelha",
+          "type": "curve",
+          "min": 0,
+          "max": 1,
+          "default": [
+            [
+              0.0,
+              0.0
+            ],
+            [
+              1.0,
+              1.0
+            ]
+          ],
+          "animatable": false,
+          "hue": false,
+          "group": "Curvas",
+          "measurementCase": "color.curve_red",
+          "status": "measured"
+        },
+        {
+          "id": "curve_green",
+          "name": "Curva verde",
+          "type": "curve",
+          "min": 0,
+          "max": 1,
+          "default": [
+            [
+              0.0,
+              0.0
+            ],
+            [
+              1.0,
+              1.0
+            ]
+          ],
+          "animatable": false,
+          "hue": false,
+          "group": "Curvas",
+          "measurementCase": "color.curve_green",
+          "status": "measured"
+        },
+        {
+          "id": "curve_blue",
+          "name": "Curva azul",
+          "type": "curve",
+          "min": 0,
+          "max": 1,
+          "default": [
+            [
+              0.0,
+              0.0
+            ],
+            [
+              1.0,
+              1.0
+            ]
+          ],
+          "animatable": false,
+          "hue": false,
+          "group": "Curvas",
+          "measurementCase": "color.curve_blue",
+          "status": "measured"
+        },
+        {
+          "id": "hue_vs_sat",
+          "name": "Matiz por saturação",
+          "type": "curve",
+          "min": 0,
+          "max": 1,
+          "default": [],
+          "animatable": false,
+          "hue": true,
+          "group": "Curvas",
+          "measurementCase": "color.hue_vs_sat",
+          "status": "measured"
+        },
+        {
+          "id": "hue_vs_hue",
+          "name": "Matiz por matiz",
+          "type": "curve",
+          "min": 0,
+          "max": 1,
+          "default": [],
+          "animatable": false,
+          "hue": true,
+          "group": "Curvas",
+          "measurementCase": "color.hue_vs_hue",
+          "status": "measured"
+        },
+        {
+          "id": "hue_vs_luma",
+          "name": "Matiz por luminância",
+          "type": "curve",
+          "min": 0,
+          "max": 1,
+          "default": [],
+          "animatable": false,
+          "hue": true,
+          "group": "Curvas",
+          "measurementCase": "color.hue_vs_luma",
+          "status": "measured"
+        },
+        {
+          "id": "luma_vs_sat",
+          "name": "Luminância por saturação",
+          "type": "curve",
+          "min": 0,
+          "max": 1,
+          "default": [],
+          "animatable": false,
+          "hue": true,
+          "group": "Curvas",
+          "measurementCase": "color.luma_vs_sat",
+          "status": "measured"
+        },
+        {
+          "id": "sat_vs_sat",
+          "name": "Saturação por saturação",
+          "type": "curve",
+          "min": 0,
+          "max": 1,
+          "default": [],
+          "animatable": false,
+          "hue": true,
+          "group": "Curvas",
+          "measurementCase": "color.sat_vs_sat",
+          "status": "measured"
+        },
+        {
+          "id": "wheels_on",
+          "name": "Rodas de cor",
+          "type": "bool",
+          "min": null,
+          "max": null,
+          "default": true,
+          "animatable": false,
+          "group": "Rodas de cor",
+          "measurementCase": "color.wheels_on",
+          "status": "pending"
+        },
+        {
+          "id": "wheel_shadows",
+          "name": "Roda das sombras",
+          "type": "wheel",
+          "min": -1,
+          "max": 1,
+          "default": [
+            0.0,
+            0.0
+          ],
+          "animatable": true,
+          "group": "Rodas de cor",
+          "measurementCase": "color.wheel_shadows",
+          "status": "measured"
+        },
+        {
+          "id": "wheel_shadows_l",
+          "name": "Luz das sombras",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Rodas de cor",
+          "measurementCase": "color.wheel_shadows_l",
+          "status": "measured"
+        },
+        {
+          "id": "wheel_midtones",
+          "name": "Roda dos meios-tons",
+          "type": "wheel",
+          "min": -1,
+          "max": 1,
+          "default": [
+            0.0,
+            0.0
+          ],
+          "animatable": true,
+          "group": "Rodas de cor",
+          "measurementCase": "color.wheel_midtones",
+          "status": "measured"
+        },
+        {
+          "id": "wheel_midtones_l",
+          "name": "Luz dos meios-tons",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Rodas de cor",
+          "measurementCase": "color.wheel_midtones_l",
+          "status": "measured"
+        },
+        {
+          "id": "wheel_highlights",
+          "name": "Roda dos realces",
+          "type": "wheel",
+          "min": -1,
+          "max": 1,
+          "default": [
+            0.0,
+            0.0
+          ],
+          "animatable": true,
+          "group": "Rodas de cor",
+          "measurementCase": "color.wheel_highlights",
+          "status": "measured"
+        },
+        {
+          "id": "wheel_highlights_l",
+          "name": "Luz dos realces",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Rodas de cor",
+          "measurementCase": "color.wheel_highlights_l",
+          "status": "measured"
+        },
+        {
+          "id": "hsl_on",
+          "name": "Correção secundária HSL",
+          "type": "bool",
+          "min": null,
+          "max": null,
+          "default": false,
+          "animatable": false,
+          "group": "HSL secundária",
+          "measurementCase": "color.hsl_on",
+          "status": "pending"
+        },
+        {
+          "id": "hsl_hue",
+          "name": "Matiz central",
+          "type": "float",
+          "min": 0.0,
+          "max": 360.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "°",
+          "group": "HSL secundária",
+          "measurementCase": "color.hsl_hue",
+          "status": "measured"
+        },
+        {
+          "id": "hsl_hue_range",
+          "name": "Faixa de matiz",
+          "type": "float",
+          "min": 1.0,
+          "max": 180.0,
+          "default": 30.0,
+          "animatable": true,
+          "unit": "°",
+          "group": "HSL secundária",
+          "measurementCase": "color.hsl_hue_range",
+          "status": "measured"
+        },
+        {
+          "id": "hsl_sat_min",
+          "name": "Saturação mínima",
+          "type": "float",
+          "min": 0.0,
+          "max": 100.0,
+          "default": 10.0,
+          "animatable": true,
+          "unit": "",
+          "group": "HSL secundária",
+          "measurementCase": "color.hsl_sat_min",
+          "status": "measured"
+        },
+        {
+          "id": "hsl_luma_min",
+          "name": "Luminância mínima",
+          "type": "float",
+          "min": 0.0,
+          "max": 100.0,
+          "default": 5.0,
+          "animatable": true,
+          "unit": "",
+          "group": "HSL secundária",
+          "measurementCase": "color.hsl_luma_min",
+          "status": "measured"
+        },
+        {
+          "id": "hsl_luma_max",
+          "name": "Luminância máxima",
+          "type": "float",
+          "min": 0.0,
+          "max": 100.0,
+          "default": 95.0,
+          "animatable": true,
+          "unit": "",
+          "group": "HSL secundária",
+          "measurementCase": "color.hsl_luma_max",
+          "status": "measured"
+        },
+        {
+          "id": "hsl_soft",
+          "name": "Suavização da seleção",
+          "type": "float",
+          "min": 0.0,
+          "max": 100.0,
+          "default": 20.0,
+          "animatable": true,
+          "unit": "",
+          "group": "HSL secundária",
+          "measurementCase": "color.hsl_soft",
+          "status": "measured"
+        },
+        {
+          "id": "hsl_show_mask",
+          "name": "Visualizar seleção",
+          "type": "choice",
+          "min": null,
+          "max": null,
+          "default": "0",
+          "animatable": false,
+          "choices": [
+            {
+              "id": "0",
+              "name": "Desligado"
+            },
+            {
+              "id": "1",
+              "name": "Cor e cinza"
+            },
+            {
+              "id": "2",
+              "name": "Cor e preto"
+            },
+            {
+              "id": "3",
+              "name": "Branco e preto"
+            }
+          ],
+          "group": "HSL secundária",
+          "measurementCase": "color.hsl_show_mask",
+          "status": "pending"
+        },
+        {
+          "id": "hsl_denoise",
+          "name": "Redução de ruído da seleção",
+          "type": "float",
+          "min": 0.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "HSL secundária",
+          "measurementCase": "color.hsl_denoise",
+          "status": "measured"
+        },
+        {
+          "id": "hsl_blur",
+          "name": "Desfoque da seleção",
+          "type": "float",
+          "min": 0.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "HSL secundária",
+          "measurementCase": "color.hsl_blur",
+          "status": "measured"
+        },
+        {
+          "id": "hsl_temp",
+          "name": "Temperatura secundária",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "HSL secundária",
+          "measurementCase": "color.hsl_temp",
+          "status": "measured"
+        },
+        {
+          "id": "hsl_tint",
+          "name": "Matiz secundário",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "HSL secundária",
+          "measurementCase": "color.hsl_tint",
+          "status": "measured"
+        },
+        {
+          "id": "hsl_sat",
+          "name": "Saturação secundária",
+          "type": "float",
+          "min": 0.0,
+          "max": 200.0,
+          "default": 100.0,
+          "animatable": true,
+          "unit": "",
+          "group": "HSL secundária",
+          "measurementCase": "color.hsl_sat",
+          "status": "measured"
+        },
+        {
+          "id": "hsl_hue_shift",
+          "name": "Deslocamento de matiz",
+          "type": "float",
+          "min": -180.0,
+          "max": 180.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "°",
+          "group": "HSL secundária",
+          "measurementCase": "color.hsl_hue_shift",
+          "status": "measured"
+        },
+        {
+          "id": "vignette_on",
+          "name": "Vinheta",
+          "type": "bool",
+          "min": null,
+          "max": null,
+          "default": true,
+          "animatable": false,
+          "group": "Vinheta",
+          "measurementCase": "color.vignette_on",
+          "status": "pending"
+        },
+        {
+          "id": "vignette_amount",
+          "name": "Intensidade da vinheta",
+          "type": "float",
+          "min": -5.0,
+          "max": 5.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Vinheta",
+          "measurementCase": "color.vignette_amount",
+          "status": "measured"
+        },
+        {
+          "id": "vignette_midpoint",
+          "name": "Ponto médio",
+          "type": "float",
+          "min": 0.0,
+          "max": 100.0,
+          "default": 50.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Vinheta",
+          "measurementCase": "color.vignette_midpoint",
+          "status": "measured"
+        },
+        {
+          "id": "vignette_roundness",
+          "name": "Arredondamento",
+          "type": "float",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Vinheta",
+          "measurementCase": "color.vignette_roundness",
+          "status": "measured"
+        },
+        {
+          "id": "vignette_feather",
+          "name": "Suavidade da vinheta",
+          "type": "float",
+          "min": 0.0,
+          "max": 100.0,
+          "default": 50.0,
+          "animatable": true,
+          "unit": "",
+          "group": "Vinheta",
+          "measurementCase": "color.vignette_feather",
+          "status": "measured"
+        }
+      ],
+      "measurementCase": "color.contrast",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "color"
+    },
+    {
+      "id": "effect.gaussian_blur",
+      "engineId": "gaussian_blur",
+      "name": "Desfoque gaussiano",
+      "folder": [
+        "Efeitos",
+        "Desfoque e nitidez"
+      ],
+      "phase": "3b",
+      "params": [
+        {
+          "id": "blurriness",
+          "name": "Desfoque",
+          "type": "float",
+          "min": 0.0,
+          "max": 3000.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": ""
+        },
+        {
+          "id": "dimensions",
+          "name": "Dimensões",
+          "type": "choice",
+          "min": null,
+          "max": null,
+          "default": "0",
+          "animatable": false,
+          "choices": [
+            {
+              "id": "0",
+              "name": "Horizontal e vertical"
+            },
+            {
+              "id": "1",
+              "name": "Horizontal"
+            },
+            {
+              "id": "2",
+              "name": "Vertical"
+            }
+          ]
+        },
+        {
+          "id": "repeat_edge",
+          "name": "Repetir pixels da borda",
+          "type": "bool",
+          "min": null,
+          "max": null,
+          "default": false,
+          "animatable": false
+        }
+      ],
+      "measurementCase": "gaussian_blur",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "effect"
+    },
+    {
+      "id": "effect.directional_blur",
+      "engineId": "directional_blur",
+      "name": "Desfoque direcional",
+      "folder": [
+        "Efeitos",
+        "Desfoque e nitidez"
+      ],
+      "phase": "3b",
+      "params": [
+        {
+          "id": "direction",
+          "name": "Direção",
+          "type": "float",
+          "min": -3600,
+          "max": 3600,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "graus"
+        },
+        {
+          "id": "length",
+          "name": "Comprimento",
+          "type": "float",
+          "min": 0.0,
+          "max": 1000.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": ""
+        }
+      ],
+      "measurementCase": "directional_blur",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "effect"
+    },
+    {
+      "id": "effect.sharpen",
+      "engineId": "sharpen",
+      "name": "Nitidez",
+      "folder": [
+        "Efeitos",
+        "Desfoque e nitidez"
+      ],
+      "phase": "3b",
+      "params": [
+        {
+          "id": "amount",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0.0,
+          "max": 4000.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": ""
+        }
+      ],
+      "measurementCase": "sharpen",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "effect"
+    },
+    {
+      "id": "effect.unsharp_mask",
+      "engineId": "unsharp_mask",
+      "name": "Máscara de nitidez",
+      "folder": [
+        "Efeitos",
+        "Desfoque e nitidez"
+      ],
+      "phase": "3b",
+      "params": [
+        {
+          "id": "amount",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0.0,
+          "max": 500.0,
+          "default": 50.0,
+          "animatable": true,
+          "unit": ""
+        },
+        {
+          "id": "radius",
+          "name": "Raio",
+          "type": "float",
+          "min": 0.1,
+          "max": 250.0,
+          "default": 1.0,
+          "animatable": true,
+          "unit": ""
+        },
+        {
+          "id": "threshold",
+          "name": "Limiar",
+          "type": "float",
+          "min": 0.0,
+          "max": 255.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": ""
+        }
+      ],
+      "measurementCase": "unsharp_mask",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "effect"
+    },
+    {
+      "id": "effect.black_white",
+      "engineId": "black_white",
+      "name": "Preto e branco",
+      "folder": [
+        "Efeitos",
+        "Estilização"
+      ],
+      "phase": "3b",
+      "params": [],
+      "measurementCase": "black_white",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "effect"
+    },
+    {
+      "id": "effect.horizontal_flip",
+      "engineId": "horizontal_flip",
+      "name": "Inverter horizontalmente",
+      "folder": [
+        "Efeitos",
+        "Transformação"
+      ],
+      "phase": "3b",
+      "params": [],
+      "measurementCase": "horizontal_flip",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "effect"
+    },
+    {
+      "id": "effect.vertical_flip",
+      "engineId": "vertical_flip",
+      "name": "Inverter verticalmente",
+      "folder": [
+        "Efeitos",
+        "Transformação"
+      ],
+      "phase": "3b",
+      "params": [],
+      "measurementCase": "vertical_flip",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "effect"
+    },
+    {
+      "id": "transform.motion",
+      "engineId": "motion",
+      "name": "Transformação",
+      "folder": [
+        "Movimento"
+      ],
+      "phase": "3b",
+      "params": [
+        {
+          "id": "position",
+          "name": "Posição",
+          "type": "point",
+          "min": null,
+          "max": null,
+          "default": null,
+          "animatable": true,
+          "defaultFrom": "frameCenter",
+          "measurementCase": "transform.position",
+          "status": "pending"
+        },
+        {
+          "id": "scale",
+          "name": "Escala",
+          "type": "float",
+          "min": 0.0,
+          "max": 10000.0,
+          "default": 100.0,
+          "animatable": true,
+          "unit": "",
+          "measurementCase": "transform.scale",
+          "status": "measured"
+        },
+        {
+          "id": "scale_width",
+          "name": "Escala horizontal",
+          "type": "float",
+          "min": 0.0,
+          "max": 10000.0,
+          "default": 100.0,
+          "animatable": true,
+          "unit": "",
+          "measurementCase": "transform.scale_width",
+          "status": "pending"
+        },
+        {
+          "id": "uniform_scale",
+          "name": "Escala uniforme",
+          "type": "bool",
+          "min": null,
+          "max": null,
+          "default": true,
+          "animatable": false,
+          "measurementCase": "transform.uniform_scale",
+          "status": "pending"
+        },
+        {
+          "id": "rotation",
+          "name": "Rotação",
+          "type": "float",
+          "min": -3600,
+          "max": 3600,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "graus",
+          "measurementCase": "transform.rotation",
+          "status": "blocked"
+        },
+        {
+          "id": "anchor",
+          "name": "Ponto de ancoragem",
+          "type": "point",
+          "min": null,
+          "max": null,
+          "default": null,
+          "animatable": true,
+          "defaultFrom": "sourceCenter",
+          "measurementCase": "transform.anchor",
+          "status": "pending"
+        },
+        {
+          "id": "anti_flicker",
+          "name": "Redução de cintilação",
+          "type": "float",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.0,
+          "animatable": true,
+          "unit": "",
+          "measurementCase": "transform.anti_flicker",
+          "status": "pending"
+        }
+      ],
+      "measurementCase": "transform.scale",
+      "status": "conditional",
+      "processing": "mixed",
+      "kind": "transform"
+    },
+    {
+      "id": "transform.opacity",
+      "engineId": "opacity",
+      "name": "Opacidade",
+      "folder": [
+        "Movimento"
+      ],
+      "phase": "3b",
+      "params": [
+        {
+          "id": "opacity",
+          "name": "Opacidade",
+          "type": "float",
+          "min": 0.0,
+          "max": 100.0,
+          "default": 100.0,
+          "animatable": true,
+          "unit": "%"
+        }
+      ],
+      "measurementCase": "transform.opacity",
+      "status": "measured",
+      "processing": "mixed",
+      "kind": "transform"
+    },
+    {
+      "id": "look.teal-orange",
+      "name": "Azul-petróleo e laranja",
+      "folder": [
+        "Looks",
+        "Criativos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "engineLookChoice": 1,
+      "measurementCase": "look.1",
+      "status": "measured",
+      "limitation": "Paridade medida com intensidade 100; controle global ainda sujeito a I3.1/M3.2.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.warm-film",
+      "name": "Filme quente",
+      "folder": [
+        "Looks",
+        "Criativos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "engineLookChoice": 2,
+      "measurementCase": "look.2",
+      "status": "measured",
+      "limitation": "Paridade medida com intensidade 100; controle global ainda sujeito a I3.1/M3.2.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.cool-blue",
+      "name": "Azul frio",
+      "folder": [
+        "Looks",
+        "Criativos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "engineLookChoice": 3,
+      "measurementCase": "look.3",
+      "status": "measured",
+      "limitation": "Paridade medida com intensidade 100; controle global ainda sujeito a I3.1/M3.2.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.silver-retention",
+      "name": "Prata retida",
+      "folder": [
+        "Looks",
+        "Criativos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "engineLookChoice": 4,
+      "measurementCase": "look.4",
+      "status": "measured",
+      "limitation": "Paridade medida com intensidade 100; controle global ainda sujeito a I3.1/M3.2.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.faded-matte",
+      "name": "Mate desbotado",
+      "folder": [
+        "Looks",
+        "Criativos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "engineLookChoice": 5,
+      "measurementCase": "look.5",
+      "status": "measured",
+      "limitation": "Paridade medida com intensidade 100; controle global ainda sujeito a I3.1/M3.2.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.monochrome",
+      "name": "Monocromático",
+      "folder": [
+        "Looks",
+        "Criativos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "engineLookChoice": 6,
+      "measurementCase": "look.6",
+      "status": "measured",
+      "limitation": "Paridade medida com intensidade 100; controle global ainda sujeito a I3.1/M3.2.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.golden-hour",
+      "name": "Hora dourada",
+      "folder": [
+        "Looks",
+        "Criativos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "engineLookChoice": 7,
+      "measurementCase": "look.7",
+      "status": "measured",
+      "limitation": "Paridade medida com intensidade 100; controle global ainda sujeito a I3.1/M3.2.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.night",
+      "name": "Noite",
+      "folder": [
+        "Looks",
+        "Criativos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "engineLookChoice": 8,
+      "measurementCase": "look.8",
+      "status": "measured",
+      "limitation": "Paridade medida com intensidade 100; controle global ainda sujeito a I3.1/M3.2.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.teal-shadows-warm-skin",
+      "name": "Sombras azul-petróleo, pele quente",
+      "folder": [
+        "Looks",
+        "Cinema"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Teal Shadows, Warm Skin",
+      "measurementCase": "preset.0",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.night-exterior",
+      "name": "Exterior noturno",
+      "folder": [
+        "Looks",
+        "Cinema"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Night Exterior",
+      "measurementCase": "preset.1",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.golden-dusk",
+      "name": "Entardecer dourado",
+      "folder": [
+        "Looks",
+        "Cinema"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Golden Dusk",
+      "measurementCase": "preset.2",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.steel-blue",
+      "name": "Azul aço",
+      "folder": [
+        "Looks",
+        "Cinema"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Steel Blue",
+      "measurementCase": "preset.3",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.hard-sun",
+      "name": "Sol intenso",
+      "folder": [
+        "Looks",
+        "Cinema"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Hard Sun",
+      "measurementCase": "preset.4",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.faded-print",
+      "name": "Cópia desbotada",
+      "folder": [
+        "Looks",
+        "Filme"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Faded Print",
+      "measurementCase": "preset.5",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.silver-print",
+      "name": "Cópia com prata retida",
+      "folder": [
+        "Looks",
+        "Filme"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Silver Retention",
+      "measurementCase": "preset.6",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.cross-process",
+      "name": "Revelação cruzada",
+      "folder": [
+        "Looks",
+        "Filme"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Cross Processed",
+      "measurementCase": "preset.7",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.warm-negative",
+      "name": "Negativo quente",
+      "folder": [
+        "Looks",
+        "Filme"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Warm Negative",
+      "measurementCase": "preset.8",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.neutral-mono",
+      "name": "Monocromático neutro",
+      "folder": [
+        "Looks",
+        "Monocromáticos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Neutral Mono",
+      "measurementCase": "preset.9",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.hard-mono",
+      "name": "Monocromático intenso",
+      "folder": [
+        "Looks",
+        "Monocromáticos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Hard Mono",
+      "measurementCase": "preset.10",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.sepia",
+      "name": "Sépia",
+      "folder": [
+        "Looks",
+        "Monocromáticos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Sepia Tone",
+      "measurementCase": "preset.11",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.cold-mono",
+      "name": "Monocromático frio",
+      "folder": [
+        "Looks",
+        "Monocromáticos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Cold Mono",
+      "measurementCase": "preset.12",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.lift-shadows",
+      "name": "Sombras abertas",
+      "folder": [
+        "Looks",
+        "Técnicos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Lift Shadows",
+      "measurementCase": "preset.13",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.protect-highlights",
+      "name": "Realces preservados",
+      "folder": [
+        "Looks",
+        "Técnicos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Protect Highlights",
+      "measurementCase": "preset.14",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.half-saturation",
+      "name": "Meia saturação",
+      "folder": [
+        "Looks",
+        "Técnicos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Half Saturation",
+      "measurementCase": "preset.15",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.boost-vibrance",
+      "name": "Vivacidade reforçada",
+      "folder": [
+        "Looks",
+        "Técnicos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Boost Vibrance",
+      "measurementCase": "preset.16",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "look.preset.legal-range",
+      "name": "Faixa de sinal reduzida",
+      "folder": [
+        "Looks",
+        "Técnicos"
+      ],
+      "phase": "3a",
+      "params": [
+        {
+          "id": "intensity",
+          "name": "Intensidade",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "enginePreset": "Legal Range Squeeze",
+      "measurementCase": "preset.17",
+      "status": "measured",
+      "limitation": "Preset completo medido; mistura global por intensidade ainda precisa de adaptação e medição.",
+      "kind": "look",
+      "processing": "mixed"
+    },
+    {
+      "id": "clip.speed",
+      "name": "Velocidade",
+      "folder": [
+        "Movimento"
+      ],
+      "phase": "3b",
+      "status": "conditional",
+      "params": [
+        {
+          "id": "speed",
+          "name": "Velocidade",
+          "type": "float",
+          "min": 0.25,
+          "max": 4,
+          "default": 1,
+          "animatable": false
+        }
+      ],
+      "kind": "speed",
+      "processing": "mixed"
+    },
+    {
+      "id": "export.classic",
+      "name": "Clássico",
+      "folder": [
+        "Exportação",
+        "Escala"
+      ],
+      "phase": "3b",
+      "status": "blocked",
+      "reason": "Engine atual amplia por bilinear; filtro de alta qualidade e nitidez após a escala ainda não existem nesse caminho.",
+      "params": [
+        {
+          "id": "method",
+          "name": "Método",
+          "type": "choice",
+          "min": null,
+          "max": null,
+          "default": "classic",
+          "choices": [
+            {
+              "id": "classic",
+              "name": "Clássico"
+            }
+          ],
+          "animatable": false
+        },
+        {
+          "id": "sharpness",
+          "name": "Nitidez de saída",
+          "type": "float",
+          "min": 0,
+          "max": 100,
+          "default": 0,
+          "animatable": false,
+          "unit": "%"
+        }
+      ],
+      "kind": "scale",
+      "processing": "mixed"
+    }
+  ]
+}
