@@ -1,4 +1,4 @@
-# Protocolo do Motor DARKVOID · versão 1 (Fases 0 e 1)
+# Protocolo do Motor DARKVOID · versão 2 (Fases 0 a 2)
 
 Contrato entre a aba Editor do DarkFlow e o Motor DARKVOID (`darkvoid-motor.exe`, processo
 auxiliar instalado junto com o app). Mudanças só com aprovação (ver `AGENTS.md`).
@@ -121,7 +121,79 @@ Quebra de linha automática dentro de `maxWidth`; o bloco nunca sai da imagem. F
 sobrepõem (a tela garante). Erros novos: `captions_invalid` (dados fora do formato),
 `no_session`.
 
-## 7. Regras
+## 7. Versão 2 (Fase 2): linha do tempo, várias mídias e legenda por frase
+
+`hello.protocol` passa a ser `2`. Tudo da versão 1 continua valendo; `session.open` continua
+existindo (equivale a uma linha do tempo com um clipe só).
+
+### Mídias
+
+`media.probe {path}` também aceita imagens (PNG, JPG, WEBP) e áudios (WAV, MP3, M4A, AAC, FLAC) e
+passa a devolver `kind`:
+- `video`: como antes.
+- `image`: `duration: 0`, `fps: 0`, `hasAudio: false`, `videoCodec` = formato da imagem.
+- `audio`: `width: 0`, `height: 0`, `fps: 0`, `videoCodec: null`.
+Arquivo que não é nenhum dos três: erro `unsupported_media`.
+
+### Linha do tempo
+
+| Comando | Parâmetros | Resultado |
+| --- | --- | --- |
+| `timeline.set` | `{format: "vertical" \| "horizontal", fps?: number, clips: Clip[]}` (`fps` padrão 30) | `{width, height, fps, duration}` |
+
+```ts
+type Clip = {
+  id: string;                  // estável entre envios (a tela gera)
+  media: string;               // caminho do arquivo
+  track: "V1" | "V2" | "A1" | "A2";
+  start: number;               // onde começa na linha do tempo (s)
+  in: number;                  // trecho do arquivo usado: de `in` ...
+  out: number;                 // ... até `out` (s); imagem: in = 0 e out = duração desejada
+  volume: number;              // 0 a 2 (1 = original); vídeo: o áudio dele; imagem: ignorado
+  fadeIn: number;              // s, rampa de volume no começo (0 = sem)
+  fadeOut: number;             // s, rampa de volume no fim (0 = sem)
+  muted?: boolean;             // vídeo sem som
+};
+```
+- Primeiro `timeline.set` cria a sessão; os seguintes **atualizam** a mesma sessão (o motor compara
+  pelos `id` e muda só o que mudou). Mantém `preview.config` e a posição da agulha (limitada à nova
+  duração) e redesenha o quadro atual. Meta: resposta em menos de 50 ms com 300 clipes.
+- Trocar `format` ou `fps` refaz a sessão (como `session.open` com outro formato).
+- `V1` e `V2` recebem vídeos e imagens; `A1` e `A2`, só áudios. O som de um vídeo vai junto com o
+  clipe de vídeo. `V2` é desenhada por cima de `V1`. Cada mídia é encaixada no quadro (sem cortar,
+  fundo preto), como em `session.open`.
+- Onde não há clipe: preto e silêncio. `duration` = fim do último clipe.
+- Erro `timeline_invalid` (mensagem diz qual clipe) se: clipes da mesma trilha se sobrepõem,
+  `out <= in`, `in < 0`, `out` além da duração do arquivo (vídeo e áudio), trilha errada para o tipo
+  de mídia, número fora do intervalo. Arquivo que sumiu: `media_not_found` com o caminho.
+
+### Onda de áudio e miniaturas
+
+| Comando | Parâmetros | Resultado |
+| --- | --- | --- |
+| `audio.peaks` | `{media?, buckets}` | com `media`: picos do arquivo inteiro; sem `media`: da linha do tempo (como na v1) |
+| `media.thumbs` | `{media, count, height}` (`count` 1 a 200, `height` 32 a 240) | `{thumbs: [{time, jpeg}]}`: `count` quadros igualmente espaçados na duração do vídeo; `jpeg` em base64 |
+
+### Valem para a linha do tempo
+
+- `speech.transcribe` ouve a mistura da linha do tempo; as palavras vêm no tempo da linha do tempo.
+- `export.start` exporta a linha do tempo inteira (de 0 a `duration`).
+- `captions.set`: tempos no tempo da linha do tempo (como antes). Cada frase pode ter
+  `override` opcional, que substitui só aqueles campos do estilo naquela frase:
+  ```ts
+  type Cue = { start: number; end: number; words: CueWord[];
+               override?: { position?: { x: number; y: number }; size?: number; maxWidth?: number } };
+  ```
+  Prévia e exportação desenham o `override` igual.
+
+### Cache
+
+`<data-dir>\cache` (ondas e miniaturas) tem limite de 5 GB: ao passar, o motor apaga os arquivos
+usados há mais tempo. Nunca apaga nada fora do cache.
+
+Erros novos: `timeline_invalid`, `unsupported_media`.
+
+## 8. Regras
 
 - O motor só lê os caminhos que a tela manda e só grava no caminho de exportação pedido e dentro
   de `--data-dir`.
