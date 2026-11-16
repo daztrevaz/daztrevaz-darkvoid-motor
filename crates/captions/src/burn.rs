@@ -63,7 +63,7 @@ fn caption_style(font: &str, font_style: &str, px: f32) -> TextStyle {
     TextStyle { family: family.into(), style: style.into(), size: px, ..Default::default() }
 }
 
-fn lin(c: [u8; 4]) -> [f32; 4] {
+pub(crate) fn lin(c: [u8; 4]) -> [f32; 4] {
     let a = c[3] as f32 / 255.0;
     [srgb_to_linear(c[0] as f32 / 255.0) * a, srgb_to_linear(c[1] as f32 / 255.0) * a, srgb_to_linear(c[2] as f32 / 255.0) * a, a]
 }
@@ -274,6 +274,9 @@ fn dilate(m: &[f32], w: usize, h: usize, r: f32) -> Vec<f32> {
 pub fn track_overlay(track: &CaptionTrack, t: Tick, w: usize, h: usize) -> Option<Overlay> {
     if !track.enabled {
         return None;
+    }
+    if let Some(animation) = &track.animation {
+        return crate::animated::overlay(animation, t, w, h);
     }
     let c = track.caption_at(t)?;
     render_caption(c, &track.style, w, h)
