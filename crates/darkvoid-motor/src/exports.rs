@@ -268,6 +268,71 @@ fn io_error() -> protocol::Error {
 mod tests {
     use super::*;
     #[test]
+    fn timeline_export_matches_preview_with_and_without_burned_captions() {
+        use filmcraft_time::{FrameRate, Tick, TimeRange};
+        let dir = tempfile::tempdir().unwrap();
+        let red = dir.path().join("red.png");
+        let blue = dir.path().join("blue.png");
+        image::RgbImage::from_pixel(96, 54, image::Rgb([240u8, 10, 20])).save(&red).unwrap();
+        image::RgbImage::from_pixel(96, 54, image::Rgb([10u8, 20, 240])).save(&blue).unwrap();
+        let clip = |id: &str, path: &Path, track: &str, start: f64, end: f64| json!({"id":id,"media":path,"track":track,"start":start,"in":0,"out":end,"volume":1,"fadeIn":0,"fadeOut":0});
+        let mut session = Session::new(Arc::new(filmcraft_engine::FsServices));
+        crate::timeline::Timeline::default()
+            .set(
+                &mut session,
+                json!({"format":"horizontal","fps":5,"clips":[
+                    clip("v1",&red,"V1",0.2,0.6),clip("v2",&blue,"V2",0.4,0.2)
+                ]}),
+            )
+            .unwrap();
+        crate::captions::set(
+            &mut session,
+            json!({"cues":[{"start":0.2,"end":0.8,"words":[{"text":"OI","start":0.2,"end":0.8}]}],"style":{
+                "mode":"phrase","font":"Inter","weight":700,"size":200,"color":"#FFFFFF","activeColor":"#FFFFFF",
+                "outline":null,"shadow":null,"box":null,"uppercase":false,"position":{"x":0.5,"y":0.5},"maxWidth":0.8
+            }}),
+        )
+        .unwrap();
+        let sequence = session.state.active_sequence.unwrap();
+        let sources = session.media.provider(session.project.clone(), session.services.clone());
+        let mut burned_pixels = Vec::new();
+        for burn in [false, true] {
+            let path = dir.path().join(format!("burn-{burn}.mp4"));
+            let mut settings = ExportSettings {
+                path: path.to_string_lossy().into_owned(),
+                frame_size: Some((96, 54)),
+                frame_rate: Some(FrameRate::new(5, 1)),
+                burn_captions: burn,
+                range: Some(TimeRange::new(Tick::ZERO, Tick::from_seconds_f64(0.8))),
+                ..Default::default()
+            };
+            run(&session.project, sequence, &mut settings, &sources, &Progress::default()).unwrap();
+            let exported = session.media.probe_file(path.to_str().unwrap(), &*session.services).unwrap();
+            assert!((exported.info().duration.seconds() - 0.8).abs() < 0.03);
+            for time in [0.0, 0.2, 0.4, 0.6] {
+                let tick = Tick::from_seconds_f64(time);
+                let actual = exported.video_frame(filmcraft_media::FrameRequest::full(tick)).unwrap().to_rgba8();
+                let (_, _, expected) = filmcraft_render::render_sequence_rgba8(
+                    &session.project,
+                    sequence,
+                    tick,
+                    filmcraft_render::RenderOptions { scale: 0.05, captions: burn, ..Default::default() },
+                    &sources,
+                );
+                assert_eq!(actual.len(), expected.len());
+                let mae =
+                    actual.chunks_exact(4).zip(expected.chunks_exact(4)).flat_map(|(a, b)| (0..3).map(move |i| u64::from(a[i].abs_diff(b[i])))).sum::<u64>()
+                        as f64
+                        / (actual.len() / 4 * 3) as f64;
+                assert!(mae < 8.0, "burn={burn}, tempo={time}, erro={mae}");
+                if time == 0.4 {
+                    burned_pixels.push(actual);
+                }
+            }
+        }
+        assert_ne!(burned_pixels[0], burned_pixels[1], "burnCaptions precisa mudar o arquivo exportado");
+    }
+    #[test]
     fn presets_keep_engine_delivery_settings() {
         for (preset, size) in [(Preset::Shorts, (1080, 1920)), (Preset::Youtube1080, (1920, 1080)), (Preset::Youtube2160, (3840, 2160))] {
             let settings = preset.settings();

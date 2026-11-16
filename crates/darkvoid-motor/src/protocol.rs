@@ -4,11 +4,11 @@ use serde_json::{Value, json};
 #[derive(Debug, Clone)]
 pub struct Error {
     pub code: &'static str,
-    pub message: &'static str,
+    pub message: String,
 }
 pub type Result<T> = std::result::Result<T, Error>;
-pub fn error(code: &'static str, message: &'static str) -> Error {
-    Error { code, message }
+pub fn error(code: &'static str, message: impl Into<String>) -> Error {
+    Error { code, message: message.into() }
 }
 pub fn invalid() -> Error {
     error("invalid_params", "Parâmetros inválidos.")

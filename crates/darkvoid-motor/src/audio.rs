@@ -18,6 +18,7 @@ use std::{
 };
 
 pub struct Audio {
+    projects: tokio::sync::watch::Sender<Arc<Project>>,
     stream: Option<cpal::Stream>,
     producer: Option<thread::JoinHandle<()>>,
     stop: Arc<AtomicBool>,
@@ -36,10 +37,11 @@ impl Audio {
         let sequence = session.state.active_sequence.ok_or_else(unavailable)?;
         let mut project = (*session.project).clone();
         project.sequence_mut(sequence).ok_or_else(unavailable)?.settings.sample_rate = rate;
-        let project = Arc::new(project);
+        let mut project = Arc::new(project);
         // Pool independente: a imagem nunca segura o decoder usado pelo áudio.
         let pool = Arc::new(MediaPool::default());
-        let sources = pool.provider(project.clone(), session.services.clone());
+        let services = session.services.clone();
+        let mut sources = pool.provider(project.clone(), services.clone());
         let queue = Arc::new(ArrayQueue::new(rate as usize / 2));
         let mut cursor = origin.to_units_floor(rate as i64);
         fill(&project, sequence, &sources, &queue, &mut cursor, rate as usize / 5);
@@ -65,8 +67,13 @@ impl Audio {
         }?;
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = stop.clone();
+        let (projects, mut updated) = tokio::sync::watch::channel(project.clone());
         let producer = thread::spawn(move || {
             while !stopped.load(Ordering::Acquire) {
+                if updated.has_changed().unwrap_or(false) {
+                    project = updated.borrow_and_update().clone();
+                    sources = pool.provider(project.clone(), services.clone());
+                }
                 if queue.capacity() - queue.len() >= 1024 {
                     fill(&project, sequence, &sources, &queue, &mut cursor, 1024);
                 } else {
@@ -74,12 +81,19 @@ impl Audio {
                 }
             }
         });
-        let audio = Self { stream: Some(stream), producer: Some(producer), stop, failed, clock, underruns, rate, origin };
+        let audio = Self { projects, stream: Some(stream), producer: Some(producer), stop, failed, clock, underruns, rate, origin };
         audio.stream.as_ref().ok_or_else(unavailable)?.play().map_err(|_| unavailable())?;
         Ok(audio)
     }
     pub fn time(&self) -> Tick {
         self.origin + Tick::from_units(self.clock.load(Ordering::Acquire) as i64, self.rate as i64)
+    }
+    pub fn update(&self, session: &Session) {
+        let mut project = (*session.project).clone();
+        if let Some(sequence) = session.state.active_sequence.and_then(|id| project.sequence_mut(id)) {
+            sequence.settings.sample_rate = self.rate;
+        }
+        self.projects.send_replace(Arc::new(project));
     }
 }
 impl Drop for Audio {
@@ -175,6 +189,7 @@ mod tests {
         let rate = 48_000;
         let origin = Tick::from_seconds_f64(12.5);
         let audio = Audio {
+            projects: tokio::sync::watch::channel(Arc::new(Project::new("Teste"))).0,
             stream: None,
             producer: None,
             stop: Arc::new(AtomicBool::new(false)),
