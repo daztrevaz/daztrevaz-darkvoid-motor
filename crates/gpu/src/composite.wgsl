@@ -42,8 +42,22 @@ struct VOut {
 fn vs(@builtin(vertex_index) vi: u32) -> VOut {
     var corners = array<vec2<f32>, 6>(vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(0.0, 1.0), vec2(0.0, 1.0), vec2(1.0, 0.0), vec2(1.0, 1.0));
     let c = corners[vi];
-    let s = c * u.src.xy;
-    let o = vec2(u.m0.x * s.x + u.m0.z * s.y + u.m1.x, u.m0.y * s.x + u.m0.w * s.y + u.m1.y);
+    var s = c * u.src.xy;
+    var o = vec2(u.m0.x * s.x + u.m0.z * s.y + u.m1.x, u.m0.y * s.x + u.m0.w * s.y + u.m1.y);
+    // The CPU samples every pixel in the transformed rectangle's integer bounds, including
+    // partially covered edge pixels. A rotated quad's raster coverage would drop those pixels.
+    if u.m0.x * u.m0.w - u.m0.y * u.m0.z != 0.0 {
+        let p0 = u.m1.xy;
+        let p1 = p0 + u.m0.xy * u.src.x;
+        let p2 = p0 + u.m0.zw * u.src.y;
+        let p3 = p1 + u.m0.zw * u.src.y;
+        let lo = floor(min(min(p0, p1), min(p2, p3)));
+        let hi = ceil(max(max(p0, p1), max(p2, p3)));
+        o = mix(lo, hi, c);
+        let v = o - p0;
+        let det = u.m0.x * u.m0.w - u.m0.y * u.m0.z;
+        s = vec2(u.m0.w * v.x - u.m0.z * v.y, -u.m0.y * v.x + u.m0.x * v.y) / det;
+    }
     var out: VOut;
     out.pos = vec4(o.x / u.m1.z * 2.0 - 1.0, 1.0 - o.y / u.m1.w * 2.0, 0.0, 1.0);
     out.sp = s;
@@ -169,7 +183,7 @@ fn managed(rgb: vec3<f32>) -> vec3<f32> {
 }
 
 // One linear premultiplied sample at source position p.
-fn sample(p: vec2<f32>) -> vec4<f32> {
+fn decoded_sample(p: vec2<f32>) -> vec4<f32> {
     let kind = u32(u.p0.y);
     if kind == 0u {
         // rgba8 sRGB texture: loads are already linear, straight alpha
@@ -181,7 +195,8 @@ fn sample(p: vec2<f32>) -> vec4<f32> {
     }
     let cs = u.p2.z;
     let yc = load4(tex0, p).r * cs;
-    let cp = p * u.src.zw / u.src.xy;
+    // The reference decoder expands each chroma sample over its luma block before transforming.
+    let cp = floor(floor(p) * u.src.zw / u.src.xy) + 0.5;
     let cb = load4(tex1, cp).r * cs;
     let cr = load4(tex2, cp).r * cs;
     let y = (yc - u.p1.x) / u.p1.y;
@@ -201,6 +216,21 @@ fn sample(p: vec2<f32>) -> vec4<f32> {
     return vec4(lin * a, a);
 }
 
+fn sample(p: vec2<f32>) -> vec4<f32> {
+    if u32(u.p0.y) != 2u { return decoded_sample(p); }
+    // CPU transforms the decoded linear picture. Interpolating Y'CbCr codes before decoding
+    // instead produces different colours at enlarged or rotated edges.
+    let q = clamp(p - 0.5, vec2(0.0), u.src.xy - 1.0);
+    let base = floor(q) + 0.5;
+    let f = fract(q);
+    let hi = u.src.xy - 0.5;
+    let a = decoded_sample(base);
+    let b = decoded_sample(min(base + vec2(1.0, 0.0), hi));
+    let c = decoded_sample(min(base + vec2(0.0, 1.0), hi));
+    let d = decoded_sample(min(base + vec2(1.0), hi));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
 // The layer's premultiplied linear colour at this pixel, opacity applied.
 fn layer_color(sp: vec2<f32>) -> vec4<f32> {
     let n = max(u32(u.p0.z), 1u);
@@ -209,7 +239,16 @@ fn layer_color(sp: vec2<f32>) -> vec4<f32> {
     for (var j = 0u; j < n; j++) {
         for (var i = 0u; i < n; i++) {
             let off = (vec2(f32(i), f32(j)) + 0.5) / f32(n) - 0.5;
-            acc += sample(sp + off * fp);
+            let p = sp + off * fp;
+            var coverage = 1.0;
+            let solid_full = all(u.src.xy == vec2(1.0)) && all(u.m1.xy == vec2(0.0))
+                && u.m0.x == u.m1.z && u.m0.w == u.m1.w && u.m0.y == 0.0 && u.m0.z == 0.0;
+            if !solid_full && u.m0.x * u.m0.w - u.m0.y * u.m0.z != 0.0 {
+                // Bilinear interpolation against transparent pixels outside the image, as CPU.
+                let edge = clamp(p + 0.5, vec2(0.0), vec2(1.0)) * clamp(u.src.xy + 0.5 - p, vec2(0.0), vec2(1.0));
+                coverage = edge.x * edge.y;
+            }
+            acc += sample(p) * coverage;
         }
     }
     return acc / f32(n * n) * u.p0.x;

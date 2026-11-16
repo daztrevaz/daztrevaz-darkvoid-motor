@@ -33,6 +33,12 @@ struct Clip {
     color: Option<crate::color::Color>,
     #[serde(default)]
     look: Option<crate::color::Look>,
+    #[serde(default)]
+    effects: Vec<crate::effects::Effect>,
+    #[serde(default)]
+    transform: Option<crate::effects::Transform>,
+    #[serde(default = "normal_speed")]
+    speed: f64,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -48,6 +54,12 @@ struct Input {
     #[serde(default = "default_fps")]
     fps: f64,
     clips: Vec<Value>,
+}
+fn normal_speed() -> f64 {
+    1.0
+}
+fn duration(c: &Clip) -> Tick {
+    Tick(((Tick::from_seconds_f64(c.out) - Tick::from_seconds_f64(c.source_in)).0 as f64 / c.speed).round() as i64)
 }
 fn default_fps() -> f64 {
     30.0
@@ -106,7 +118,13 @@ impl Timeline {
                 serde_json::from_value::<TransitionInput>(transition.clone()).map_err(|_| crate::catalog::invalid(&id, "transitionIn"))?;
             }
             for field in ["effects", "transform", "speed"] {
-                if value.get(field).is_some() {
+                let valid = match (field, value.get(field)) {
+                    (_, None) => true,
+                    ("effects", Some(v)) => serde_json::from_value::<Vec<crate::effects::Effect>>(v.clone()).is_ok(),
+                    ("transform", Some(v)) => serde_json::from_value::<crate::effects::Transform>(v.clone()).is_ok(),
+                    (_, Some(v)) => v.as_f64().is_some_and(|v| v.is_finite() && (0.25..=4.0).contains(&v)),
+                };
+                if !valid {
                     return Err(crate::catalog::invalid(&id, field));
                 }
             }
@@ -120,8 +138,11 @@ impl Timeline {
             if c.id.trim().is_empty() || !ids.insert(c.id.clone()) {
                 return Err(invalid(&c.id, "id vazio ou repetido."));
             }
-            let duration = c.out - c.source_in;
+            let duration = (c.out - c.source_in) / c.speed;
             if ![c.start, c.source_in, c.out, c.volume, c.fade_in, c.fade_out].iter().all(|n| n.is_finite())
+                || !c.speed.is_finite()
+                || !(0.25..=4.0).contains(&c.speed)
+                || Tick::from_seconds_f64(duration) <= Tick::ZERO
                 || c.start < 0.0
                 || c.source_in < 0.0
                 || duration <= 0.0
@@ -142,10 +163,7 @@ impl Timeline {
         // Valida todos os intervalos antes de abrir/importar arquivos ou alterar o projeto.
         clips.sort_by(|a, b| a.track.cmp(&b.track).then(a.start.total_cmp(&b.start)));
         for pair in clips.windows(2) {
-            if pair[0].track == pair[1].track
-                && Tick::from_seconds_f64(pair[0].start) + (Tick::from_seconds_f64(pair[0].out) - Tick::from_seconds_f64(pair[0].source_in))
-                    > Tick::from_seconds_f64(pair[1].start)
-            {
+            if pair[0].track == pair[1].track && Tick::from_seconds_f64(pair[0].start) + duration(&pair[0]) > Tick::from_seconds_f64(pair[1].start) {
                 return Err(invalid(&pair[1].id, &format!("sobrepõe o clipe '{}' na trilha {}.", pair[0].id, pair[1].track)));
             }
         }
@@ -154,9 +172,8 @@ impl Timeline {
                 let previous = index.checked_sub(1).map(|i| &clips[i]);
                 let valid = previous.is_some_and(|p| {
                     p.track == c.track
-                        && Tick::from_seconds_f64(p.start) + Tick::from_seconds_f64(p.out) - Tick::from_seconds_f64(p.source_in)
-                            == Tick::from_seconds_f64(c.start)
-                        && tr.duration <= (p.out - p.source_in).min(c.out - c.source_in)
+                        && Tick::from_seconds_f64(p.start) + duration(p) == Tick::from_seconds_f64(c.start)
+                        && tr.duration <= duration(p).seconds().min(duration(c).seconds())
                 });
                 if !c.track.starts_with('V') || !valid || !tr.duration.is_finite() || Tick::from_seconds_f64(tr.duration) <= Tick::ZERO {
                     return Err(crate::catalog::invalid(&c.id, "transitionIn.duration ou encontro com o clipe anterior"));
@@ -168,10 +185,12 @@ impl Timeline {
         let mut color_effects = HashMap::new();
         let mut luts = HashMap::new();
         for c in &clips {
-            if !c.track.starts_with('V') && (c.color.is_some() || c.look.is_some()) {
+            if !c.track.starts_with('V') && (c.color.is_some() || c.look.is_some() || !c.effects.is_empty() || c.transform.is_some()) {
                 return Err(crate::catalog::invalid(&c.id, "color/look: use uma trilha de vídeo"));
             }
-            color_effects.insert(c.id.clone(), self.lut_cache.prepare(c.color.as_ref(), c.look.as_ref(), &c.id, &mut luts)?);
+            let mut prepared = self.lut_cache.prepare(c.color.as_ref(), c.look.as_ref(), &c.id, &mut luts)?;
+            prepared.extend(crate::effects::prepare(&c.effects, c.transform.as_ref(), &c.id)?);
+            color_effects.insert(c.id.clone(), prepared);
         }
         let mut work = Session::new(Arc::new(FsServices));
         work.services = session.services.clone();
@@ -311,11 +330,7 @@ impl Timeline {
                     }
                 }
                 // As legendas não podem estender a duração definida pelos clipes.
-                let end = clips
-                    .iter()
-                    .map(|c| Tick::from_seconds_f64(c.start) + (Tick::from_seconds_f64(c.out) - Tick::from_seconds_f64(c.source_in)))
-                    .max()
-                    .unwrap_or(Tick::ZERO);
+                let end = clips.iter().map(|c| Tick::from_seconds_f64(c.start) + duration(c)).max().unwrap_or(Tick::ZERO);
                 for track in &mut seq.caption_tracks {
                     track.captions.retain(|c| c.start < end);
                     for caption in &mut track.captions {
@@ -360,8 +375,8 @@ fn track_item(c: &Clip, item: ItemId, id: ClipId) -> TrackItem {
         custom_label_color: None,
         start: Tick::from_seconds_f64(c.start),
         source_in: Tick::from_seconds_f64(c.source_in),
-        duration: Tick::from_seconds_f64(c.out) - Tick::from_seconds_f64(c.source_in),
-        speed: 1.0,
+        duration: duration(c),
+        speed: c.speed,
         reverse: false,
         enabled: true,
         link: None,
@@ -374,7 +389,7 @@ fn track_item(c: &Clip, item: ItemId, id: ClipId) -> TrackItem {
         essential: None,
         multicam: None,
         time_interpolation: Default::default(),
-        maintain_pitch: false,
+        maintain_pitch: true,
         hold_filters: false,
         field_options: None,
         source_channels: vec![],
