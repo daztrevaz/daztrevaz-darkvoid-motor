@@ -141,9 +141,18 @@ struct Crop {
     bottom: Animated,
 }
 
+fn track_choice(p: &ParamDef) -> bool {
+    matches!(&p.kind, filmcraft_project::ParamKind::Choice(options) if *options == filmcraft_project::effect::TRACK_CHOICES)
+}
+fn parse_value(p: &ParamDef, value: &Value) -> Option<ParamValue> {
+    if track_choice(p) && !matches!(value.as_str(), Some("0" | "1" | "2")) {
+        return None;
+    }
+    catalog::parse_param(p, value)
+}
 fn animated(p: &ParamDef, input: &Animated, clip: &str, field: &str) -> Result<Param> {
     let invalid = || catalog::invalid(clip, field);
-    let mut param = Param::new(catalog::parse_param(p, &input.value).ok_or_else(invalid)?);
+    let mut param = Param::new(parse_value(p, &input.value).ok_or_else(invalid)?);
     let mut last = None;
     for point in &input.keyframes {
         if !p.animatable || !point.time.is_finite() || point.time < 0.0 || point.time >= Tick(i64::MAX).seconds() {
@@ -154,7 +163,7 @@ fn animated(p: &ParamDef, input: &Animated, clip: &str, field: &str) -> Result<P
             return Err(invalid());
         }
         last = Some(time);
-        let mut key = Keyframe::new(time, catalog::parse_param(p, &point.value).ok_or_else(invalid)?);
+        let mut key = Keyframe::new(time, parse_value(p, &point.value).ok_or_else(invalid)?);
         key.interp = match point.interpolation.as_str() {
             "linear" => Interpolation::Linear,
             "easeIn" => Interpolation::EaseIn,
@@ -250,6 +259,9 @@ pub fn items() -> Vec<Value> {
 fn spec(p: &ParamDef) -> Value {
     let mut spec = catalog::named_spec(p, &translated(p.label), translated);
     spec["animatable"] = json!(p.animatable);
+    if track_choice(p) {
+        spec["choices"].as_array_mut().unwrap().truncate(3);
+    }
     if p.kind == filmcraft_project::ParamKind::Point && spec["default"].is_null() {
         // Corner Pin and gradient endpoints have engine-specific automatic positions. Omitting
         // those values preserves them; the contract's centre hint cannot describe a corner.

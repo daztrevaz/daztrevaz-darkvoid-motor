@@ -92,6 +92,12 @@ fn catalog_has_61_effects_26_blends_and_roundtrips_defaults() {
     let items = cat["items"].as_array().unwrap();
     assert_eq!(items.iter().filter(|i| i["kind"] == "effect").count(), 61);
     assert_eq!(crate::effects::BLENDS.len(), 26);
+    let matte = items.iter().find(|item| item["id"] == "effect.track_matte").unwrap();
+    let track = matte["params"].as_array().unwrap().iter().find(|p| p["id"] == "matte").unwrap();
+    assert_eq!(track["choices"].as_array().unwrap().len(), 3);
+    let unavailable: Vec<crate::effects::Effect> =
+        serde_json::from_value(json!([{"id":"effect.track_matte","instanceId":"one","enabled":true,"params":{"matte":{"value":"3"}}}])).unwrap();
+    assert_eq!(crate::effects::prepare(&unavailable, None, "a").unwrap_err().code, "timeline_invalid");
     for item in items.iter().filter(|i| i["kind"] == "effect") {
         let mut params = serde_json::Map::new();
         for p in item["params"].as_array().unwrap() {
