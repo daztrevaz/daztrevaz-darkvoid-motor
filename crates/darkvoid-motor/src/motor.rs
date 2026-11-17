@@ -55,7 +55,8 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
         peak_media: None,
         work_dir: data_dir.clone(),
         exports: Exports::new(data_dir.clone(), updates.jobs.clone(), ids.clone()),
-        speech: crate::speech::Speech::new(data_dir.join("modelos"), updates.jobs.clone(), ids),
+        speech: crate::speech::Speech::new(data_dir.join("modelos"), updates.jobs.clone(), ids.clone()),
+        loudness: crate::loudness::Loudness::new(ids, updates.jobs.clone()),
         session: Session::new(Arc::new(FsServices)),
         timeline: crate::timeline::Timeline::default(),
         config: preview::Config::default(),
@@ -67,6 +68,7 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
     };
     let mut state_at = Instant::now();
     let mut stats_at = Instant::now();
+    let mut meter_at = Instant::now();
     let mut rendered = 0;
     loop {
         if *stopped.borrow() {
@@ -98,12 +100,21 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
         }
         motor.exports.poll();
         motor.speech.poll();
+        motor.loudness.poll();
         if motor.audio.is_none() {
             stats_at = Instant::now();
             rendered = motor.renderer.metrics.rendered.load(Ordering::Relaxed);
             continue;
         }
         motor.advance();
+        if meter_at.elapsed() >= Duration::from_millis(100) {
+            if let Some(audio) = &mut motor.audio
+                && let Some(value) = audio.meter()
+            {
+                let _ = motor.updates.jobs.send(value);
+            }
+            meter_at = Instant::now();
+        }
         if state_at.elapsed() >= Duration::from_secs_f64(1.0 / 30.0) {
             motor.emit_state();
             state_at = Instant::now();
@@ -131,6 +142,7 @@ struct Motor {
     work_dir: std::path::PathBuf,
     exports: Exports,
     speech: crate::speech::Speech,
+    loudness: crate::loudness::Loudness,
     session: Session,
     timeline: crate::timeline::Timeline,
     config: preview::Config,
@@ -160,7 +172,7 @@ impl Motor {
     fn execute(&mut self, command: &str, params: Value) -> Result<Value> {
         match command {
             "hello" => Ok(
-                json!({"version":VERSION,"protocol":3,"fonts":crate::captions::fonts(),"gpu":self.renderer.gpu,"encoders":self.exports.capabilities.names(),"speech":filmcraft_speech::available()}),
+                json!({"version":VERSION,"protocol":4,"fonts":crate::captions::fonts(),"gpu":self.renderer.gpu,"encoders":self.exports.capabilities.names(),"speech":filmcraft_speech::available()}),
             ),
             "catalog.get" => Ok(crate::catalog::get()),
             "scopes.get" => crate::color::scopes(&self.session, self.time, params),
@@ -168,6 +180,16 @@ impl Motor {
             "speech.download" => self.speech.download(field(params)?),
             "speech.transcribe" => self.speech.transcribe(&self.session, field(params)?),
             "export.start" => self.exports.start(&self.session, field(params)?),
+            "audio.measure" => {
+                let params: crate::loudness::Measure = field(params)?;
+                let snapshot = if let Some(id) = params.clip_id {
+                    let (ids, start, duration) = self.timeline.clip_audio(&id)?;
+                    crate::mix::Snapshot::clip(&self.session, &ids, start, duration)?
+                } else {
+                    crate::mix::Snapshot::new(&self.session)?
+                };
+                self.loudness.start(snapshot)
+            }
             "captions.set" => {
                 crate::captions::set(&mut self.session, params)?;
                 self.invalidate();
@@ -183,7 +205,7 @@ impl Motor {
             "captions.exportSrt" => crate::captions::export_srt(&self.session, field(params)?, &self.work_dir),
             "job.cancel" => {
                 let params: crate::exports::Cancel = field(params)?;
-                if self.speech.cancel(params.job_id) { Ok(json!({})) } else { self.exports.cancel(params) }
+                if self.speech.cancel(params.job_id) || self.loudness.cancel(params.job_id) { Ok(json!({})) } else { self.exports.cancel(params) }
             }
             "media.probe" => {
                 let p: Path = field(params)?;

@@ -12,6 +12,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungsten
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 mod audio_cases;
 mod caption_cases;
+mod loudness_cases;
 mod media_cases;
 mod timeline_cases;
 const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -135,7 +136,7 @@ async fn catalog_transitions_render_via_timeline_set() {
     }
     let mut motor = Motor::start();
     let mut socket = motor.connect().await;
-    assert_eq!(request(&mut socket, 1, "hello", json!({})).await["result"]["protocol"], 3);
+    assert_eq!(request(&mut socket, 1, "hello", json!({})).await["result"]["protocol"], 4);
     let catalog = request(&mut socket, 2, "catalog.get", json!({})).await;
     let items: Vec<_> = catalog["result"]["items"].as_array().unwrap().iter().filter(|item| item["kind"] == "transition").collect();
     assert_eq!(items.len(), 50);
@@ -614,7 +615,7 @@ async fn authentication_replacement_errors_and_shutdown() {
     let hello = request(&mut first, 1, "hello", json!({})).await;
     assert_eq!(hello["ok"], true);
     assert_eq!(hello["result"]["speech"], true);
-    assert_eq!(hello["result"]["protocol"], 3);
+    assert_eq!(hello["result"]["protocol"], 4);
     let fonts = hello["result"]["fonts"].as_array().unwrap();
     assert!(fonts.iter().any(|f| f == "Inter"));
     assert!(fonts.windows(2).all(|v| v[0].as_str().unwrap() < v[1].as_str().unwrap()));

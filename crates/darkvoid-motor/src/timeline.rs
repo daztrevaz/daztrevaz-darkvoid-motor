@@ -39,6 +39,8 @@ struct Clip {
     transform: Option<crate::effects::Transform>,
     #[serde(default = "normal_speed")]
     speed: f64,
+    #[serde(default)]
+    gain: f64,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -101,6 +103,11 @@ pub fn probe(session: &Session, path: &str) -> Result<MediaInfo> {
 }
 
 impl Timeline {
+    pub fn clip_audio(&self, id: &str) -> Result<(Vec<ClipId>, Tick, Tick)> {
+        let (clip, ids) = self.clips.get(id).ok_or_else(|| invalid(id, "clipe não encontrado."))?;
+        let audio = if clip.track.starts_with('V') { ids.get(1).copied().into_iter().collect() } else { ids.clone() };
+        Ok((audio, Tick::from_seconds_f64(clip.start), duration(clip)))
+    }
     pub fn is_active(&self) -> bool {
         !self.format.is_empty()
     }
@@ -139,7 +146,8 @@ impl Timeline {
                 return Err(invalid(&c.id, "id vazio ou repetido."));
             }
             let duration = (c.out - c.source_in) / c.speed;
-            if ![c.start, c.source_in, c.out, c.volume, c.fade_in, c.fade_out].iter().all(|n| n.is_finite())
+            if ![c.start, c.source_in, c.out, c.volume, c.fade_in, c.fade_out, c.gain].iter().all(|n| n.is_finite())
+                || !(-24.0..=24.0).contains(&c.gain)
                 || !c.speed.is_finite()
                 || !(0.25..=4.0).contains(&c.speed)
                 || Tick::from_seconds_f64(duration) <= Tick::ZERO
@@ -386,7 +394,7 @@ fn track_item(c: &Clip, item: ItemId, id: ClipId) -> TrackItem {
         group: None,
         effects: vec![volume],
         markers: vec![],
-        gain_db: if c.volume > 0.0 { 20.0 * c.volume.log10() } else { -96.0 },
+        gain_db: c.gain + if c.volume > 0.0 { 20.0 * c.volume.log10() } else { -96.0 },
         frame_hold: None,
         scale_to_frame: c.track.starts_with('V'),
         essential: None,

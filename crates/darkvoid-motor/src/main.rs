@@ -7,6 +7,7 @@ mod color;
 mod effects;
 mod encoding;
 mod exports;
+mod loudness;
 mod mix;
 mod motor;
 mod peaks;
