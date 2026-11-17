@@ -27,6 +27,7 @@ pub struct Audio {
     underruns: Arc<AtomicU64>,
     rate: u32,
     origin: Tick,
+    meter: tokio::sync::watch::Receiver<Option<serde_json::Value>>,
 }
 
 impl Audio {
@@ -48,11 +49,14 @@ impl Audio {
         let clock = Arc::new(AtomicU64::new(0));
         let failed = Arc::new(AtomicBool::new(false));
         let underruns = Arc::new(AtomicU64::new(0));
+        let meter_queue = Arc::new(ArrayQueue::new(rate as usize / 2));
+        let (meter_tx, meter) = tokio::sync::watch::channel(None);
         let input = Callback {
             queue: queue.clone(),
             clock: clock.clone(),
             failed: failed.clone(),
             underruns: underruns.clone(),
+            meter_queue: meter_queue.clone(),
             submitted: 0,
             rate,
             channels: config.channels() as usize,
@@ -69,7 +73,13 @@ impl Audio {
         let stopped = stop.clone();
         let (projects, mut updated) = tokio::sync::watch::channel(project.clone());
         let producer = thread::spawn(move || {
+            let mut meter = crate::loudness::PlaybackMeter::new(rate);
             while !stopped.load(Ordering::Acquire) {
+                while let Some(frame) = meter_queue.pop() {
+                    if let Some(value) = meter.feed(frame) {
+                        meter_tx.send_replace(Some(value));
+                    }
+                }
                 if updated.has_changed().unwrap_or(false) && queue.capacity() - queue.len() >= rate as usize / 200 {
                     // A fila já entregue permanece contínua. Faz a troca no próximo
                     // trecho produzido, com 5 ms de interpolação entre snapshots.
@@ -93,12 +103,15 @@ impl Audio {
                 }
             }
         });
-        let audio = Self { projects, stream: Some(stream), producer: Some(producer), stop, failed, clock, underruns, rate, origin };
+        let audio = Self { projects, stream: Some(stream), producer: Some(producer), stop, failed, clock, underruns, rate, origin, meter };
         audio.stream.as_ref().ok_or_else(unavailable)?.play().map_err(|_| unavailable())?;
         Ok(audio)
     }
     pub fn time(&self) -> Tick {
         self.origin + Tick::from_units(self.clock.load(Ordering::Acquire) as i64, self.rate as i64)
+    }
+    pub fn meter(&mut self) -> Option<serde_json::Value> {
+        if self.meter.has_changed().unwrap_or(false) { self.meter.borrow_and_update().clone() } else { None }
     }
     pub fn update(&self, session: &Session) {
         let mut project = (*session.project).clone();
@@ -142,6 +155,7 @@ fn fill(project: &Project, sequence: ItemId, sources: &dyn filmcraft_render::Sou
 }
 
 struct Callback {
+    meter_queue: Arc<ArrayQueue<[f32; 2]>>,
     queue: Arc<ArrayQueue<[f32; 2]>>,
     clock: Arc<AtomicU64>,
     failed: Arc<AtomicBool>,
@@ -167,6 +181,7 @@ impl Callback {
                 self.underruns.fetch_add(1, Ordering::Relaxed);
             }
             let [left, right] = frame.unwrap_or([0.0, 0.0]);
+            let _ = self.meter_queue.push([left.clamp(-1.0, 1.0), right.clamp(-1.0, 1.0)]);
             for (channel, sample) in output.iter_mut().enumerate() {
                 let value = match (self.channels, channel) {
                     (1, _) => (left + right) * 0.5,
@@ -248,6 +263,7 @@ mod tests {
             underruns: Arc::new(AtomicU64::new(0)),
             rate: rate as u32,
             origin,
+            meter: tokio::sync::watch::channel(None).1,
         };
         assert_eq!(audio.time(), Tick::from_seconds_f64(13.5));
     }

@@ -44,12 +44,31 @@ impl Preset {
 #[derive(Deserialize)]
 pub struct Start {
     #[serde(default)]
+    loudness: Option<Loudness>,
+    #[serde(default)]
     scale: Option<Scale>,
     #[serde(default, rename = "burnCaptions")]
     burn_captions: bool,
     path: String,
     preset: Preset,
     encoder: Encoder,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Loudness {
+    target: f64,
+    true_peak: f64,
+}
+impl Loudness {
+    fn apply(&self, settings: &mut ExportSettings) -> Result<()> {
+        if !self.target.is_finite() || !(-70.0..=0.0).contains(&self.target) || !self.true_peak.is_finite() || !(-24.0..=0.0).contains(&self.true_peak) {
+            return Err(error("invalid_params", "Loudness inválido: alvo de -70 a 0 LUFS e pico real de -24 a 0 dBTP."));
+        }
+        settings.effects.loudness.enabled = true;
+        settings.effects.loudness.target_lufs = self.target;
+        settings.effects.loudness.true_peak_dbtp = self.true_peak;
+        Ok(())
+    }
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -84,6 +103,10 @@ impl Exports {
         Self { capabilities: Capabilities::detect(), cache, ids, active: None, events }
     }
     pub fn start(&mut self, session: &Session, params: Start) -> Result<Value> {
+        let mut settings = params.preset.settings();
+        if let Some(loudness) = &params.loudness {
+            loudness.apply(&mut settings)?;
+        }
         if params.scale.as_ref().is_some_and(|s| s.method != "classic" || !s.sharpness.is_finite() || !(0.0..=100.0).contains(&s.sharpness)) {
             return Err(error("invalid_params", "Escala inválida: use o método classic e nitidez de 0 a 100."));
         }
@@ -97,7 +120,6 @@ impl Exports {
             .suffix(".mp4")
             .tempfile_in(&self.cache)
             .map_err(|_| error("export_io", "Não foi possível criar o arquivo temporário da exportação."))?;
-        let mut settings = params.preset.settings();
         settings.classic_scale = params.scale.map(|s| s.sharpness as f32);
         settings.burn_captions = params.burn_captions;
         self.capabilities.apply(params.encoder, &mut settings);

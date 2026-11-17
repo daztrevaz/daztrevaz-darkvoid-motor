@@ -20,7 +20,7 @@ async fn thumbs_validate_decode_cache_and_survive_restart() {
     let data = tempfile::tempdir().unwrap();
     let mut motor = Motor::start_with_data_dir(Some(data.path()));
     let mut socket = motor.connect().await;
-    assert_eq!(request(&mut socket, 1, "hello", json!({})).await["result"]["protocol"], 3);
+    assert_eq!(request(&mut socket, 1, "hello", json!({})).await["result"]["protocol"], 4);
     for (count, height) in [
         (json!(0), json!(120)),
         (json!(201), json!(120)),
@@ -174,7 +174,7 @@ async fn thumbs_and_caption_override_acceptance() {
     let restart = Instant::now();
     let mut restarted = Motor::start_with_data_dir(Some(&data));
     let mut socket = restarted.connect().await;
-    assert_eq!(request(&mut socket, 12, "hello", json!({})).await["result"]["protocol"], 3);
+    assert_eq!(request(&mut socket, 12, "hello", json!({})).await["result"]["protocol"], 4);
     let restart_startup_ms = restart.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
     let disk = request(&mut socket, 11, "media.thumbs", json!({"media":media,"count":100,"height":120})).await;
