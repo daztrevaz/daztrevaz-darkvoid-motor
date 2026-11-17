@@ -22,6 +22,33 @@ fn pcm(path: &std::path::Path) -> Vec<f32> {
 }
 
 #[tokio::test]
+async fn audio_effect_catalog_and_track_controls_via_websocket() {
+    let mut motor = Motor::start();
+    let mut socket = motor.connect().await;
+    let catalog = request(&mut socket, 1, "catalog.get", json!({})).await;
+    assert_eq!(catalog["result"]["version"], 4);
+    let items = catalog["result"]["items"].as_array().unwrap();
+    assert_eq!(items.iter().filter(|i| i["kind"] == "audioEffect").count(), 18);
+    assert!(items.iter().any(|i| i["id"] == "audio.duck"));
+    let source = std::path::PathBuf::from(fixture());
+    let mut c = clip("voz", &source, "V1", 0.0, 0.0, 2.0);
+    c["audioEffects"] = json!([{"id":"audio.amplify","instanceId":"a","enabled":true,"params":{"gain":{"value":-12}}}]);
+    assert_eq!(request(&mut socket, 2, "timeline.set", timeline(vec![c.clone()])).await["ok"], true);
+    c["audioEffects"][0]["params"]["gain"]["value"] = json!(25);
+    let invalid = request(&mut socket, 3, "timeline.set", timeline(vec![c.clone()])).await;
+    assert_eq!(invalid["error"]["code"], "timeline_invalid");
+    assert!(invalid["error"]["message"].as_str().unwrap().contains("voz"));
+    c["audioEffects"][0]["params"]["gain"]["value"] = json!(-6);
+    let mut params = timeline(vec![c]);
+    params["tracks"] = json!({"A2":{"duck":{"by":["V1"],"reduce":12,"sensitivity":50,"fade":0.8}}});
+    assert_eq!(request(&mut socket, 4, "timeline.set", params.clone()).await["ok"], true);
+    params["tracks"]["A2"]["duck"]["by"] = json!(["A2"]);
+    assert_eq!(request(&mut socket, 5, "timeline.set", params).await["error"]["code"], "timeline_invalid");
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+}
+
+#[tokio::test]
 async fn peaks_file_without_session_and_timeline_gain_updates() {
     let mut motor = Motor::start();
     let mut socket = motor.connect().await;

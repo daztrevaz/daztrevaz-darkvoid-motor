@@ -93,7 +93,7 @@ async fn color_looks_lut_errors_and_scopes_via_websocket() {
     assert_eq!(request(&mut socket, 1, "scopes.get", json!({"kinds":["waveform"]})).await["error"]["code"], "no_session");
     let catalog = request(&mut socket, 2, "catalog.get", json!({})).await;
     let items = catalog["result"]["items"].as_array().unwrap();
-    assert_eq!(items.len(), 141);
+    assert_eq!(items.len(), 160);
     assert_eq!(items.iter().filter(|i| i["kind"] == "look").count(), 26);
     assert!(items.iter().any(|i| i["id"] == "color.grade"));
     assert_eq!(request(&mut socket, 3, "preview.config", json!({"maxWidth":96,"maxHeight":54,"quality":95})).await["ok"], true);
@@ -660,7 +660,11 @@ async fn authentication_replacement_errors_and_shutdown() {
 #[tokio::test]
 async fn eof_stops_process_even_with_client_connected() {
     let mut motor = Motor::start();
-    let _socket = motor.connect().await;
+    let mut socket = motor.connect().await;
+    // ready confirma o socket; hello confirma que fontes e GPU já inicializaram.
+    // O prazo abaixo mede o encerramento de uma sessão ativa, não o startup frio
+    // do driver no runner Windows compartilhado.
+    assert_eq!(request(&mut socket, 1, "hello", json!({})).await["ok"], true);
     drop(motor.child.stdin.take());
     motor.exited().await;
 }

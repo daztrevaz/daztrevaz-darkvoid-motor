@@ -36,6 +36,10 @@ struct Clip {
     #[serde(default)]
     effects: Vec<crate::effects::Effect>,
     #[serde(default)]
+    audio_effects: Vec<crate::effects::Effect>,
+    #[serde(default)]
+    crossfade_in: Option<f64>,
+    #[serde(default)]
     transform: Option<crate::effects::Transform>,
     #[serde(default = "normal_speed")]
     speed: f64,
@@ -52,6 +56,8 @@ struct TransitionInput {
 }
 #[derive(Deserialize)]
 struct Input {
+    #[serde(default)]
+    tracks: crate::audio_effects::Tracks,
     format: String,
     #[serde(default = "default_fps")]
     fps: f64,
@@ -75,6 +81,7 @@ struct Media {
 }
 #[derive(Default)]
 pub struct Timeline {
+    tracks: crate::audio_effects::Tracks,
     format: String,
     fps: f64,
     clips: HashMap<String, (Clip, Vec<ClipId>)>,
@@ -114,6 +121,7 @@ impl Timeline {
 
     pub fn set(&mut self, session: &mut Session, params: Value) -> Result<bool> {
         let input: Input = serde_json::from_value(params).map_err(|_| invalid("linha do tempo", "formato, fps ou lista de clipes inválidos."))?;
+        crate::audio_effects::validate_tracks(&input.tracks)?;
         if !["vertical", "horizontal"].contains(&input.format.as_str()) || !input.fps.is_finite() || !(1.0..=120.0).contains(&input.fps) {
             return Err(invalid("linha do tempo", "formato ou fps fora do intervalo (1 a 120)."));
         }
@@ -176,6 +184,16 @@ impl Timeline {
             }
         }
         for (index, c) in clips.iter().enumerate() {
+            if let Some(crossfade) = c.crossfade_in {
+                let valid = index.checked_sub(1).map(|i| &clips[i]).is_some_and(|p| {
+                    p.track == c.track
+                        && Tick::from_seconds_f64(p.start) + duration(p) == Tick::from_seconds_f64(c.start)
+                        && crossfade <= duration(p).seconds().min(duration(c).seconds())
+                });
+                if !c.track.starts_with('A') || !valid || !crossfade.is_finite() || Tick::from_seconds_f64(crossfade) <= Tick::ZERO {
+                    return Err(crate::catalog::invalid(&c.id, "crossfadeIn"));
+                }
+            }
             if let Some(tr) = &c.transition_in {
                 let previous = index.checked_sub(1).map(|i| &clips[i]);
                 let valid = previous.is_some_and(|p| {
@@ -192,6 +210,7 @@ impl Timeline {
         let reset = self.format != input.format || self.fps != input.fps || session.active_sequence().is_none();
         let mut color_effects = HashMap::new();
         let mut visual_effects = HashMap::new();
+        let mut audio_effects = HashMap::new();
         let mut luts = HashMap::new();
         for c in &clips {
             if !c.track.starts_with('V') && (c.color.is_some() || c.look.is_some() || !c.effects.is_empty() || c.transform.is_some()) {
@@ -201,6 +220,7 @@ impl Timeline {
             // Visual changes are already compared through Clip's finite public input. Engine
             // automatic coordinates contain NaN and must not invalidate every unchanged clip.
             visual_effects.insert(c.id.clone(), crate::effects::prepare(&c.effects, c.transform.as_ref(), &c.id)?);
+            audio_effects.insert(c.id.clone(), crate::audio_effects::prepare(&c.audio_effects, &c.id)?);
         }
         let mut work = Session::new(Arc::new(FsServices));
         work.services = session.services.clone();
@@ -235,6 +255,9 @@ impl Timeline {
             }
             let info = &media[&c.media].info;
             let image = info.kind == MediaKind::Still;
+            if !c.audio_effects.is_empty() && !info.has_audio() {
+                return Err(crate::catalog::invalid(&c.id, "audioEffects: a mídia não contém áudio"));
+            }
             if c.track.starts_with('V') != info.has_video() || (image && c.source_in != 0.0) || (!image && Tick::from_seconds_f64(c.out) > info.duration) {
                 return Err(invalid(&c.id, "tipo incompatível com a trilha ou trecho além da duração da mídia."));
             }
@@ -269,7 +292,7 @@ impl Timeline {
             self.clips.iter().filter(|(id, _)| reset || changed.contains(*id) || !ids.contains(*id)).flat_map(|(_, (_, ids))| ids.iter().copied()).collect();
         let mut mapping = if reset { HashMap::new() } else { self.clips.clone() };
         mapping.retain(|id, _| ids.contains(id));
-        if reset || !changed.is_empty() || !removed.is_empty() {
+        if reset || !changed.is_empty() || !removed.is_empty() || input.tracks != self.tracks {
             work.edit_sequence("Atualizar linha do tempo", |seq, ctx, _| {
                 for track in seq.all_tracks_mut() {
                     track.items.retain(|item| !removed.contains(&item.id));
@@ -291,12 +314,15 @@ impl Timeline {
                         audio.id = audio_id;
                         audio.scale_to_frame = false;
                         audio.enabled = !c.muted && c.volume > 0.0;
+                        audio.effects.extend(audio_effects[&c.id].clone());
                         placements.push((seq.audio_tracks[index].id, audio));
                         clip_ids.push(audio_id);
                     }
                     if video {
                         item.effects.extend(color_effects[&c.id].clone());
                         item.effects.extend(visual_effects[&c.id].clone());
+                    } else {
+                        item.effects.extend(audio_effects[&c.id].clone());
                     }
                     placements.push((track, item));
                     mapping.insert(c.id.clone(), (c.clone(), clip_ids));
@@ -308,6 +334,20 @@ impl Timeline {
                 }
                 for pair in clips.windows(2) {
                     let (previous, c) = (&pair[0], &pair[1]);
+                    if let Some(seconds) = c.crossfade_in {
+                        let index = usize::from(c.track.ends_with('2')) + 2;
+                        let duration = Tick::from_seconds_f64(seconds);
+                        seq.audio_tracks[index].transitions.push(Transition {
+                            id: TransitionId(ctx.alloc()),
+                            effect: filmcraft_project::find_effect("constant_power").expect("cruzamento de potência constante").instance(),
+                            start: Tick::from_seconds_f64(c.start) - Tick(duration.0 / 2),
+                            duration,
+                            from: Some(mapping[&previous.id].1[0]),
+                            to: Some(mapping[&c.id].1[0]),
+                            align: TransitionAlign::CenterAtCut,
+                            reverse: false,
+                        });
+                    }
                     let Some(input) = &c.transition_in else { continue };
                     let index = usize::from(c.track.ends_with('2'));
                     let from = &mapping[&previous.id].1;
@@ -357,11 +397,15 @@ impl Timeline {
                 Ok(())
             })
             .map_err(engine_error)?;
+            if !input.tracks.is_empty() || !self.tracks.is_empty() {
+                crate::audio_effects::apply_duck(&mut work, &input.tracks)?;
+            }
             session.project = work.project;
             session.state = work.state;
             session.media = work.media;
         }
         self.format = input.format;
+        self.tracks = input.tracks;
         self.fps = input.fps;
         self.clips = mapping;
         self.media = media;

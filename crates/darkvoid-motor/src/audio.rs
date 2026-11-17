@@ -139,7 +139,14 @@ fn unavailable() -> crate::protocol::Error {
     error("audio_unavailable", "Não foi possível iniciar o dispositivo de áudio padrão.")
 }
 
-fn fill(project: &Project, sequence: ItemId, sources: &dyn filmcraft_render::SourceProvider, queue: &ArrayQueue<[f32; 2]>, cursor: &mut i64, count: usize) {
+pub(crate) fn fill(
+    project: &Project,
+    sequence: ItemId,
+    sources: &dyn filmcraft_render::SourceProvider,
+    queue: &ArrayQueue<[f32; 2]>,
+    cursor: &mut i64,
+    count: usize,
+) {
     let Some(seq) = project.sequence(sequence) else {
         return;
     };
