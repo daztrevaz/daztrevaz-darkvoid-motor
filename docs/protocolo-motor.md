@@ -376,6 +376,28 @@ Evento `meter` durante a reprodução, até 10 por segundo: `{momentary, shortTe
 - `gif`: `{fps (5 a 30), maxWidth}` em `gif?`; `png`: sequência numerada numa pasta (`path` é a pasta);
   `wav`: só o áudio da mistura, 48 kHz, 24 bits.
 
+## Versão 5 (aprovada pelo DTRZ em 17/11): áudio separado do vídeo
+
+Campo novo do Clip:
+```ts
+audioOnly?: boolean   // true: `media` é um vídeo e só o áudio dele entra; só em A1/A2
+```
+
+- audioOnly: true exige `media` de vídeo com hasAudio: true (de media.probe). Imagem, áudio puro
+  ou vídeo sem som com audioOnly: true → timeline_invalid com o id do clipe e a frase
+  "arquivo sem áudio" (ou "imagem não tem áudio").
+- audioOnly em V1/V2 → timeline_invalid ("trilha errada para o tipo de mídia").
+- `speed` vale como no clipe de vídeo (o áudio separado leva a velocidade do vídeo, sem mudar o tom).
+- `in`/`out` são tempos do arquivo de vídeo, como no clipe de áudio. Mesma validação de
+  sobreposição, duração e limite do arquivo. volume, fadeIn, fadeOut, gain, audioEffects,
+  crossfadeIn, ducking e audio.measure valem igual a um áudio comum.
+- Sem campo de vínculo no contrato: o vínculo com o vídeo é só da tela (ela nunca o envia).
+- `muted` continua valendo para vídeo: o som some, o quadro fica.
+- Prévia e exportação usam a mesma mistura; só entra mais uma fonte de áudio.
+
+`hello.protocol` passa a ser `5`; os campos da v4 continuam valendo. Campo `audioOnly` ausente
+ou `false` preserva o comportamento anterior. `audio.peaks` também lê o áudio separado.
+
 ## 10. Regras
 
 - O motor só lê os caminhos que a tela manda e só grava no caminho de exportação pedido e dentro
