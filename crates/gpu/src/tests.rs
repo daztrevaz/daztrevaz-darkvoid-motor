@@ -4,6 +4,42 @@ use filmcraft_geom::{Affine, Vec2};
 use filmcraft_render::Blend;
 use filmcraft_render::plan::execute_cpu;
 
+#[cfg(target_os = "windows")]
+#[test]
+fn composite_shader_compiles_on_dx12_software_adapter() {
+    let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+    desc.backends = wgpu::Backends::DX12;
+    let instance = wgpu::Instance::new(desc);
+    let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions { force_fallback_adapter: true, ..Default::default() })) else {
+        eprintln!("SKIPPED: adaptador de software DirectX 12 indisponível");
+        return;
+    };
+    eprintln!("GPU de software: {:?}", adapter.get_info());
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
+    let mut compositor = GpuCompositor::new(&device, &queue);
+    let plan = FramePlan::Layers {
+        width: 96,
+        height: 48,
+        layers: vec![PlanLayer::new(super::blend_tests::yuv_frame(48, 24), Affine::scale(2.0, 2.0), 1.0, Blend::Normal)],
+    };
+    for sharpness in [None, Some(35.0)] {
+        compositor.classic_scale = sharpness;
+        let start = std::time::Instant::now();
+        compositor.composite(&plan);
+        let (_, _, actual) = compositor.read_output().expect("readback de software");
+        if let Some(sharpness) = sharpness {
+            let frame = super::blend_tests::yuv_frame(48, 24);
+            let source = filmcraft_render::Image { w: 48, h: 24, px: frame.to_linear_f32() };
+            let expected = filmcraft_render::classic::transformed(&source, 96, 48, &Affine::scale(2.0, 2.0), sharpness).over_black_rgba8();
+            let mut diffs: Vec<_> =
+                actual.chunks_exact(4).zip(expected.chunks_exact(4)).map(|(a, b)| (0..3).map(|k| a[k].abs_diff(b[k]) as u32).max().unwrap()).collect();
+            diffs.sort_unstable();
+            assert!(diffs[diffs.len() * 99 / 100] <= 6);
+        }
+        eprintln!("Quadro de software {sharpness:?}: {:?}", start.elapsed());
+    }
+}
+
 #[test]
 fn yuv_code_range_uniforms() {
     let mut mismatches = Vec::new();

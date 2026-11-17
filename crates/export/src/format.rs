@@ -261,6 +261,8 @@ pub enum H264Pass {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ExportSettings {
+    /// Opt-in high-quality classical enlargement, sharpness in 0..=100.
+    pub classic_scale: Option<f32>,
     pub format: Format,
     pub path: String,
     /// Timeline range (default: In/Out if set, else the whole sequence).
@@ -432,6 +434,7 @@ impl ColorSignal {
 impl Default for ExportSettings {
     fn default() -> Self {
         Self {
+            classic_scale: None,
             format: Format::H264,
             path: String::new(),
             range: None,
@@ -528,6 +531,9 @@ impl ExportSettings {
 
     /// Reject settings the encoders cannot honour.
     pub fn validate(&self) -> Result<()> {
+        if self.classic_scale.is_some_and(|n| !n.is_finite() || !(0.0..=100.0).contains(&n)) {
+            return Err(ExportError::Unsupported("classical scale sharpness must be in 0..=100".into()));
+        }
         if let Some(range) = self.range {
             validate_range(range)?;
         }

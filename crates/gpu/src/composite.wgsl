@@ -216,6 +216,46 @@ fn decoded_sample(p: vec2<f32>) -> vec4<f32> {
     return vec4(lin * a, a);
 }
 
+fn cubic_weight(x0: f32) -> f32 {
+    let x=abs(x0);
+    if x<1.0 {return 1.5*x*x*x-2.5*x*x+1.0;}
+    if x<2.0 {return -0.5*x*x*x+2.5*x*x-4.0*x+2.0;}
+    return 0.0;
+}
+
+fn classic_tap(p:vec2<f32>)->vec4<f32> {
+    // Placement receives linear premultiplied texels from the source/effect stage. Keep the
+    // reconstruction independent of the large YUV/HDR decoder (especially on DX12 WARP).
+    let c=load4(tex0,clamp(p,vec2(0.5),u.src.xy-0.5));
+    if u32(u.p0.y)==0u {return vec4(c.rgb*c.a,c.a);}
+    return c;
+}
+
+fn classic_row(base:vec2<f32>,w:vec4<f32>)->vec4<f32> {
+    return classic_tap(base+vec2(-0.5,0.5))*w.x
+        + classic_tap(base+vec2(0.5,0.5))*w.y
+        + classic_tap(base+vec2(1.5,0.5))*w.z
+        + classic_tap(base+vec2(2.5,0.5))*w.w;
+}
+
+// Catmull–Rom reconstruction and bounded residual sharpening, as render::classic.
+fn classic_color(p:vec2<f32>)->vec4<f32> {
+    let q=p-0.5;let base=floor(q);let f=fract(q);
+    var acc=vec4(0.0);
+    let wx=vec4(cubic_weight(f.x+1.0),cubic_weight(f.x),cubic_weight(f.x-1.0),cubic_weight(f.x-2.0));
+    let wy=vec4(cubic_weight(f.y+1.0),cubic_weight(f.y),cubic_weight(f.y-1.0),cubic_weight(f.y-2.0));
+    acc = classic_row(base + vec2(0.0,-1.0),wx)*wy.x
+        + classic_row(base,wx)*wy.y
+        + classic_row(base + vec2(0.0,1.0),wx)*wy.z
+        + classic_row(base + vec2(0.0,2.0),wx)*wy.w;
+    let a=classic_tap(base+0.5);let b=classic_tap(base+vec2(1.5,0.5));
+    let c=classic_tap(base+vec2(0.5,1.5));let d=classic_tap(base+1.5);
+    let lo=min(min(a,b),min(c,d));let hi=max(max(a,b),max(c,d));
+    let baseline=mix(mix(a,b,f.x),mix(c,d,f.x),f.y);
+    let amount=clamp(-u.p3.z-1.0,0.0,100.0)*0.0025;
+    return clamp(acc+amount*(acc-baseline),lo,hi);
+}
+
 fn sample(p: vec2<f32>) -> vec4<f32> {
     if u32(u.p0.y) != 2u { return decoded_sample(p); }
     // CPU transforms the decoded linear picture. Interpolating Y'CbCr codes before decoding
@@ -233,6 +273,7 @@ fn sample(p: vec2<f32>) -> vec4<f32> {
 
 // The layer's premultiplied linear colour at this pixel, opacity applied.
 fn layer_color(sp: vec2<f32>) -> vec4<f32> {
+    if u.p3.z < 0.0 {return classic_color(sp)*u.p0.x;}
     let n = max(u32(u.p0.z), 1u);
     let fp = u.p2.w;
     var acc = vec4(0.0);

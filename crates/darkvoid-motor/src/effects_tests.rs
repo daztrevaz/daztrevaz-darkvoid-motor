@@ -3,7 +3,7 @@ use filmcraft_engine::{FsServices, Session};
 use filmcraft_time::Tick;
 use serde_json::{Value, json};
 use std::{path::Path, sync::Arc};
-static GPU_TEST: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub(crate) static GPU_TEST: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn session() -> Session {
     Session::new(Arc::new(FsServices))

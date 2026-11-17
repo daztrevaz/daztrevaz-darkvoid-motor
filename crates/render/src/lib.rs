@@ -12,6 +12,7 @@
 pub mod audio;
 pub mod audio_fx;
 pub mod blend;
+pub mod classic;
 pub mod color_match;
 pub mod colorman;
 pub mod effects;
@@ -69,6 +70,8 @@ pub(crate) const MAX_EFFECT_PX_SCALE: f32 = 16.0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct RenderOptions {
+    /// Opt-in classical enlargement: bicubic reconstruction and bounded residual sharpening.
+    pub classic_scale: Option<f32>,
     /// Output scale relative to the sequence frame size (1.0 = full, 0.5 = ½ resolution…).
     pub scale: f32,
     /// Skip standard effects (fast scrubbing / "Toggle Effects" off).
@@ -85,7 +88,7 @@ pub struct RenderOptions {
 
 impl Default for RenderOptions {
     fn default() -> Self {
-        Self { scale: 1.0, effects: true, depth: 0, captions: false, working_output: false }
+        Self { classic_scale: None, scale: 1.0, effects: true, depth: 0, captions: false, working_output: false }
     }
 }
 
@@ -627,7 +630,14 @@ pub(crate) fn item_layer_ex(
         }
     }
     mask::apply_opacity_masks(&mut layer, item, mt, mask_scale);
-    let placed = if layer.w == w && layer.h == h && identity_placement(&m) { layer } else { layer.transformed(w, h, &m) };
+    let enlarged = (m.a * m.a + m.b * m.b).sqrt() > 1.0 || (m.c * m.c + m.d * m.d).sqrt() > 1.0;
+    let placed = if layer.w == w && layer.h == h && identity_placement(&m) {
+        layer
+    } else if let Some(sharpness) = opts.classic_scale.filter(|_| enlarged) {
+        classic::transformed(&layer, w, h, &m, sharpness)
+    } else {
+        layer.transformed(w, h, &m)
+    };
     let (op, bl) = opacity_blend(item, mt);
     Some(Layer::Full { image: placed, opacity: op, blend: bl, opaque: false })
 }
@@ -728,7 +738,14 @@ pub(crate) fn base_layer(
             media_image(project, seq, item, t, MediaFrame { src: &src, frame: &frame, n }, want)
         }
         ItemKind::Sequence(nested) => {
-            let sub = RenderOptions { scale: want, effects: opts.effects, depth: opts.depth + 1, captions: false, working_output: true };
+            let sub = RenderOptions {
+                classic_scale: opts.classic_scale,
+                scale: want,
+                effects: opts.effects,
+                depth: opts.depth + 1,
+                captions: false,
+                working_output: true,
+            };
             match item.multicam_angle(nested) {
                 // a multi-camera clip shows its angle's track only (nothing for an audio-only angle)
                 Some(angle) => match nested.angle_video_track_index(angle) {

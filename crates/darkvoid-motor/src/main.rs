@@ -25,6 +25,8 @@ mod effects_tests;
 mod measurement;
 #[cfg(test)]
 mod phase3_tests;
+#[cfg(test)]
+mod upscale_tests;
 
 use std::{io::Read, path::PathBuf, process::ExitCode};
 use tokio::sync::watch;
