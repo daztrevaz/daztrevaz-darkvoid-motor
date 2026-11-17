@@ -376,12 +376,6 @@ Evento `meter` durante a reprodução, até 10 por segundo: `{momentary, shortTe
 - `gif`: `{fps (5 a 30), maxWidth}` em `gif?`; `png`: sequência numerada numa pasta (`path` é a pasta);
   `wav`: só o áudio da mistura, 48 kHz, 24 bits.
 
-### Legendas
-
-`captions.importSrt {path}` → `{cues: Cue[]}` (a tela coloca na trilha; erros `srt_invalid`).
-
-Erros novos: `srt_invalid`.
-
 ## 10. Regras
 
 - O motor só lê os caminhos que a tela manda e só grava no caminho de exportação pedido e dentro
