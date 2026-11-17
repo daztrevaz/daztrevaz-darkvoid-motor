@@ -4,6 +4,7 @@ mod cache;
 mod captions;
 mod catalog;
 mod color;
+mod effects;
 mod encoding;
 mod exports;
 mod mix;
@@ -18,6 +19,8 @@ mod timeline;
 
 #[cfg(test)]
 mod color_tests;
+#[cfg(test)]
+mod effects_tests;
 #[cfg(test)]
 mod measurement;
 #[cfg(test)]
