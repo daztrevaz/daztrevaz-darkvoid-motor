@@ -21,6 +21,8 @@ mod timeline;
 
 #[cfg(test)]
 mod audio_effects_tests;
+#[cfg(test)]
+mod audio_only_tests;
 
 #[cfg(test)]
 mod color_tests;

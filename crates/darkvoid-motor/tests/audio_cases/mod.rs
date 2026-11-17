@@ -22,6 +22,42 @@ fn pcm(path: &std::path::Path) -> Vec<f32> {
 }
 
 #[tokio::test]
+async fn audio_only_peaks_measure_and_controls_via_websocket() {
+    let mut motor = Motor::start();
+    let mut socket = motor.connect().await;
+    assert_eq!(request(&mut socket, 1, "hello", json!({})).await["result"]["protocol"], 5);
+    let source = std::path::PathBuf::from(fixture());
+    let mut c = clip("separado", &source, "A1", 0.0, 0.0, 3.0);
+    c["audioOnly"] = json!(true);
+    assert_eq!(request(&mut socket, 2, "timeline.set", timeline(vec![c.clone()])).await["ok"], true);
+    let base = request(&mut socket, 3, "audio.peaks", json!({"buckets":30})).await;
+    assert_eq!(base["ok"], true, "{base}");
+    assert!(base["result"]["peaks"].as_array().unwrap().iter().any(|v| v.as_f64().unwrap() > 0.01));
+    let job = request(&mut socket, 4, "audio.measure", json!({"clipId":"separado"})).await;
+    assert_eq!(job["ok"], true, "{job}");
+    let done = speech_job_finished(&mut socket, &job["result"]["jobId"], "loudness", Duration::from_secs(30)).await;
+    assert_eq!(done["event"], "job.done", "{done}");
+    assert!(done["data"]["result"]["integrated"].as_f64().unwrap().is_finite());
+    c["volume"] = json!(0.5);
+    c["gain"] = json!(-6);
+    c["fadeIn"] = json!(0.5);
+    c["fadeOut"] = json!(0.5);
+    c["audioEffects"] = json!([{"id":"audio.amplify","instanceId":"ganho","enabled":true,"params":{"gain":{"value":-6}}}]);
+    assert_eq!(request(&mut socket, 5, "timeline.set", timeline(vec![c.clone()])).await["ok"], true);
+    let adjusted = request(&mut socket, 6, "audio.peaks", json!({"buckets":30})).await;
+    let a = adjusted["result"]["peaks"][15].as_f64().unwrap();
+    let b = base["result"]["peaks"][15].as_f64().unwrap();
+    assert!((a / b - 0.5 * 10.0f64.powf(-12.0 / 20.0)).abs() < 0.001);
+    assert!(adjusted["result"]["peaks"][0].as_f64().unwrap() < a * 0.3);
+    c["muted"] = json!(true);
+    assert_eq!(request(&mut socket, 7, "timeline.set", timeline(vec![c])).await["ok"], true);
+    let silent = request(&mut socket, 8, "audio.peaks", json!({"buckets":30})).await;
+    assert!(silent["result"]["peaks"].as_array().unwrap().iter().all(|v| v.as_f64().unwrap() == 0.0));
+    request(&mut socket, 99, "shutdown", json!({})).await;
+    motor.exited().await;
+}
+
+#[tokio::test]
 async fn audio_effect_catalog_and_track_controls_via_websocket() {
     let mut motor = Motor::start();
     let mut socket = motor.connect().await;
