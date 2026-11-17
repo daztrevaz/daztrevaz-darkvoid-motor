@@ -1,5 +1,6 @@
 //! Processo auxiliar local do editor DarkFlow.
 mod audio;
+mod audio_effects;
 mod cache;
 mod captions;
 mod catalog;
@@ -16,6 +17,9 @@ mod server;
 mod speech;
 mod thumbs;
 mod timeline;
+
+#[cfg(test)]
+mod audio_effects_tests;
 
 #[cfg(test)]
 mod color_tests;

@@ -117,10 +117,10 @@ struct Point {
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Effect {
-    id: String,
-    instance_id: String,
-    enabled: bool,
-    params: BTreeMap<String, Animated>,
+    pub id: String,
+    pub instance_id: String,
+    pub enabled: bool,
+    pub params: BTreeMap<String, Animated>,
 }
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -150,7 +150,7 @@ fn parse_value(p: &ParamDef, value: &Value) -> Option<ParamValue> {
     }
     catalog::parse_param(p, value)
 }
-fn animated(p: &ParamDef, input: &Animated, clip: &str, field: &str) -> Result<Param> {
+pub fn animated(p: &ParamDef, input: &Animated, clip: &str, field: &str) -> Result<Param> {
     let invalid = || catalog::invalid(clip, field);
     let mut param = Param::new(parse_value(p, &input.value).ok_or_else(invalid)?);
     let mut last = None;

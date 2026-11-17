@@ -684,6 +684,7 @@ dependencies = [
  "base64",
  "cpal",
  "crossbeam-queue",
+ "filmcraft-audio-dsp",
  "filmcraft-captions",
  "filmcraft-color",
  "filmcraft-edit",
