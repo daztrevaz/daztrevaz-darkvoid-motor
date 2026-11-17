@@ -77,7 +77,8 @@ pub fn get() -> Value {
         })
         .collect();
     items.extend(crate::color::items());
-    json!({"version":3,"revision":"m3.2-1","items":items})
+    items.extend(crate::effects::items());
+    json!({"version":3,"revision":"m3.3-1","items":items})
 }
 
 fn label(id: &str) -> &str {
@@ -158,6 +159,9 @@ fn choice_name(name: &str) -> &str {
     }
 }
 pub fn param_spec(p: &ParamDef) -> Value {
+    named_spec(p, label(p.id), |name| choice_name(name).to_owned())
+}
+pub fn named_spec(p: &ParamDef, name: &str, choice: fn(&str) -> String) -> Value {
     let (kind, min, max, unit) = match p.kind {
         ParamKind::Float { min, max, unit, .. } => ("float", Some(min), Some(max), unit),
         ParamKind::Angle => ("float", Some(-36000.0), Some(36000.0), "°"),
@@ -181,7 +185,7 @@ pub fn param_spec(p: &ParamDef) -> Value {
         ParamValue::Text(text) => json!(text),
         _ => unreachable!(),
     };
-    let mut spec = json!({"id":p.id,"name":label(p.id),"type":kind,"min":min,"max":max,"default":default,"animatable":false});
+    let mut spec = json!({"id":p.id,"name":name,"type":kind,"min":min,"max":max,"default":default,"animatable":false});
     if !unit.is_empty() {
         spec["unit"] = json!(unit);
     }
@@ -189,7 +193,7 @@ pub fn param_spec(p: &ParamDef) -> Value {
         spec["defaultFrom"] = json!("frameCenter");
     }
     if let ParamKind::Choice(options) = p.kind {
-        spec["choices"] = json!(options.iter().enumerate().map(|(i, name)| json!({"id":i.to_string(),"name":choice_name(name)})).collect::<Vec<_>>());
+        spec["choices"] = json!(options.iter().enumerate().map(|(i, name)| json!({"id":i.to_string(),"name":choice(name)})).collect::<Vec<_>>());
     }
     spec
 }
