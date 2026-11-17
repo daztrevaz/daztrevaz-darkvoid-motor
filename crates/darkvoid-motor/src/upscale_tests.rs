@@ -44,6 +44,7 @@ fn fixture(path: &Path, w: u32, h: u32) {
 }
 #[test]
 fn classic_catalog_validation_and_pixels_are_effective() {
+    let _guard = crate::effects_tests::GPU_TEST.lock().unwrap_or_else(|e| e.into_inner());
     let cat = crate::catalog::get();
     let item = cat["items"].as_array().unwrap().iter().find(|i| i["id"] == "scale.classic").unwrap();
     assert_eq!(item["params"][0]["min"], 0);
@@ -95,6 +96,7 @@ fn classic_catalog_validation_and_pixels_are_effective() {
 #[test]
 #[ignore = "Aceite físico M3.4: GPU real e FFmpeg local apenas para criar a referência sintética"]
 fn reference_1080p_to_2160p_export_and_timing() {
+    let _guard = crate::effects_tests::GPU_TEST.lock().unwrap_or_else(|e| e.into_inner());
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/m3.4-reference");
     std::fs::create_dir_all(&root).unwrap();
     let run = root.join(format!("run-{}", std::process::id()));
