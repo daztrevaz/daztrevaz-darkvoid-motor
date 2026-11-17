@@ -224,13 +224,13 @@ fn mix_item(project: &Project, item: &TrackItem, timing: &TrackItem, win: Window
         // The nested sequence is the clip's source: speed, reverse and clip effects apply to its
         // mix exactly as they do to a media clip's sound.
         let read = |m0: i64, len: usize| Some(nested_mix(project, &q, Window { start: m0, frames: len, sr }, sources, w, live.depth));
-        effected(item, &read, a0, n, sr, w)
+        effected(item, &read, a0, n, sr, w, source_key(project, item))
     } else {
         let Some(src) = sources.source(item.item) else { return };
         if !src.info().has_audio() {
             return;
         }
-        effected(item, &|m0, len| src.audio_stream(item.audio_stream, m0, len, sr).ok(), a0, n, sr, w)
+        effected(item, &|m0, len| src.audio_stream(item.audio_stream, m0, len, sr).ok(), a0, n, sr, w, source_key(project, item))
     };
     // gains: clip gain × Volume (keyframed, per 64-sample block) × channel volume × panner
     let clip_gain = db_to_gain(item.gain_db);
@@ -346,11 +346,24 @@ fn nested_mix(project: &Project, nested: &Sequence, win: Window, sources: &dyn S
 /// sequence's sample rate (a media source's audio, or a nested sequence's mix).
 pub(crate) type SourceAudio<'a> = &'a dyn Fn(i64, usize) -> Option<AudioBuffer>;
 
+fn source_key(project: &Project, item: &TrackItem) -> u64 {
+    if !crate::audio_fx::has_effects(item) {
+        return 0;
+    }
+    use std::hash::{Hash, Hasher};
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    // File paths and imported identities separate equal clip IDs in distinct projects.
+    // Nested sequences include their contents, so edits invalidate recursive DSP history.
+    if let Ok(bytes) = serde_json::to_vec(&(project.resolve_media(item.item), project.sequence(item.item))) {
+        bytes.hash(&mut hash);
+    }
+    hash.finish()
+}
 /// The clip's audio after speed/reverse and clip effects (before clip gain, Volume and Panner) for
 /// timeline samples `[a0, a0 + n)`, `w` channels.
-fn effected(item: &TrackItem, src: SourceAudio, a0: i64, n: usize, sr: u32, w: usize) -> Vec<Vec<f32>> {
+fn effected(item: &TrackItem, src: SourceAudio, a0: i64, n: usize, sr: u32, w: usize, source_key: u64) -> Vec<Vec<f32>> {
     let read = |x0: i64, len: usize| raw_channels(item, src, x0, len, sr, w);
-    if crate::audio_fx::has_effects(item) { crate::audio_fx::process(item, a0, n, sr, &read) } else { read(a0, n) }
+    if crate::audio_fx::has_effects(item) { crate::audio_fx::process(item, a0, n, sr, &read, source_key) } else { read(a0, n) }
 }
 
 /// One clip's own signal for timeline samples `[start, start + frames)` (sequence rate): clip gain
@@ -369,7 +382,8 @@ pub fn clip_signal(item: &TrackItem, start: i64, frames: usize, sr: u32, sources
         let n = (a1 - a0) as usize;
         let off = (a0 - start) as usize;
         let g = db_to_gain(item.gain_db);
-        let buf = effected(item, &|m0, len| src.audio_stream(item.audio_stream, m0, len, sr).ok(), a0, n, sr, 2);
+        let source_key = std::sync::Arc::as_ptr(&src) as *const () as usize as u64;
+        let buf = effected(item, &|m0, len| src.audio_stream(item.audio_stream, m0, len, sr).ok(), a0, n, sr, 2, source_key);
         for (dst, b) in out.iter_mut().zip(&buf) {
             for (d, x) in dst[off..off + n].iter_mut().zip(b) {
                 *d = x * g;

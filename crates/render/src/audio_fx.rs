@@ -310,7 +310,7 @@ struct Chain {
     next_out: i64,
 }
 
-type Key = (u64, u64, u32, usize);
+type Key = (u64, u64, u32, usize, u64);
 
 fn cache() -> &'static Mutex<HashMap<Key, Vec<Chain>>> {
     static C: OnceLock<Mutex<HashMap<Key, Vec<Chain>>>> = OnceLock::new();
@@ -320,6 +320,11 @@ fn cache() -> &'static Mutex<HashMap<Key, Vec<Chain>>> {
 fn structure_hash(item: &TrackItem) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
+    // IDs are local to each project. Edits to parameters or source timing must also
+    // start a fresh chain rather than inherit another reader's recursive state.
+    if let Ok(bytes) = serde_json::to_vec(item) {
+        bytes.hash(&mut h);
+    }
     for (e, m) in active(item) {
         e.effect.hash(&mut h);
         m.dsp.hash(&mut h);
@@ -354,9 +359,10 @@ fn run(chain: &mut Chain, item: &TrackItem, in0: i64, input: &mut [Vec<f32>], sr
 /// Process the item's audio for timeline samples `[a0, a0 + n)`. `read(x0, len)` returns the clip's
 /// raw planar audio (2 channels, or 6 on a 5.1 track) for timeline samples `[x0, x0 + len)`
 /// (silence outside the clip).
-pub fn process(item: &TrackItem, a0: i64, n: usize, sr: u32, read: &dyn Fn(i64, usize) -> Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+/// `source_key` identifies the source content independently of project-local item IDs.
+pub fn process(item: &TrackItem, a0: i64, n: usize, sr: u32, read: &dyn Fn(i64, usize) -> Vec<Vec<f32>>, source_key: u64) -> Vec<Vec<f32>> {
     let width = read(a0, 0).len().max(1);
-    let key = (item.id.0, structure_hash(item), sr, width);
+    let key = (item.id.0, structure_hash(item), sr, width, source_key);
     let taken = {
         let mut c = cache().lock().unwrap_or_else(|e| e.into_inner());
         c.get_mut(&key).and_then(|v| v.iter().position(|ch| ch.next_out == a0).map(|i| v.swap_remove(i)))
@@ -404,6 +410,30 @@ mod tests {
     use super::*;
     use filmcraft_audio_dsp::Unit;
     use filmcraft_project::{EffectKind, ParamKind, effect_defs};
+
+    #[test]
+    fn cache_separates_source_identity_and_parameter_edits() {
+        let mut item: TrackItem = serde_json::from_value(serde_json::json!({
+            "id": 9881, "item": 2, "name": "cache", "label": "Violet", "start": 0,
+            "duration": Tick::from_seconds_f64(10.0).0, "source_in": 0,
+            "speed": 1, "enabled": true, "effects": []
+        }))
+        .unwrap();
+        let mut effect = filmcraft_project::find_effect("amplify").unwrap().instance();
+        effect.param_mut("gain").unwrap().value = filmcraft_project::ParamValue::Float(-12.0);
+        item.effects.push(effect);
+        let read = |_: i64, n: usize| vec![vec![0.2; n], vec![0.1; n]];
+        process(&item, 0, 48000, 48000, &read, 101);
+        item.effects[0].param_mut("gain").unwrap().value = filmcraft_project::ParamValue::Float(-6.0);
+        let after_edit = process(&item, 48000, 2048, 48000, &read, 101);
+        let mut fresh = item.clone();
+        fresh.id = filmcraft_project::ClipId(9882);
+        assert_eq!(after_edit, process(&fresh, 48000, 2048, 48000, &read, 101));
+        process(&item, 0, 48000, 48000, &read, 202);
+        let other_source = process(&item, 48000, 2048, 48000, &read, 303);
+        fresh.id = filmcraft_project::ClipId(9883);
+        assert_eq!(other_source, process(&fresh, 48000, 2048, 48000, &read, 303));
+    }
 
     #[test]
     fn every_audio_effect_has_dsp() {
