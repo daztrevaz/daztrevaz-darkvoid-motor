@@ -224,17 +224,30 @@ fn cubic_weight(x0: f32) -> f32 {
 }
 
 fn classic_tap(p:vec2<f32>)->vec4<f32> {
-    return sample(clamp(p,vec2(0.5),u.src.xy-0.5));
+    // Placement receives linear premultiplied texels from the source/effect stage. Keep the
+    // reconstruction independent of the large YUV/HDR decoder (especially on DX12 WARP).
+    let c=load4(tex0,clamp(p,vec2(0.5),u.src.xy-0.5));
+    if u32(u.p0.y)==0u {return vec4(c.rgb*c.a,c.a);}
+    return c;
+}
+
+fn classic_row(base:vec2<f32>,w:vec4<f32>)->vec4<f32> {
+    return classic_tap(base+vec2(-0.5,0.5))*w.x
+        + classic_tap(base+vec2(0.5,0.5))*w.y
+        + classic_tap(base+vec2(1.5,0.5))*w.z
+        + classic_tap(base+vec2(2.5,0.5))*w.w;
 }
 
 // Catmull–Rom reconstruction and bounded residual sharpening, as render::classic.
 fn classic_color(p:vec2<f32>)->vec4<f32> {
     let q=p-0.5;let base=floor(q);let f=fract(q);
     var acc=vec4(0.0);
-    for(var j=-1;j<=2;j++){for(var i=-1;i<=2;i++){
-        let ij=vec2(f32(i),f32(j));
-        acc+=classic_tap(base+ij+0.5)*cubic_weight(q.x-base.x-f32(i))*cubic_weight(q.y-base.y-f32(j));
-    }}
+    let wx=vec4(cubic_weight(f.x+1.0),cubic_weight(f.x),cubic_weight(f.x-1.0),cubic_weight(f.x-2.0));
+    let wy=vec4(cubic_weight(f.y+1.0),cubic_weight(f.y),cubic_weight(f.y-1.0),cubic_weight(f.y-2.0));
+    acc = classic_row(base + vec2(0.0,-1.0),wx)*wy.x
+        + classic_row(base,wx)*wy.y
+        + classic_row(base + vec2(0.0,1.0),wx)*wy.z
+        + classic_row(base + vec2(0.0,2.0),wx)*wy.w;
     let a=classic_tap(base+0.5);let b=classic_tap(base+vec2(1.5,0.5));
     let c=classic_tap(base+vec2(0.5,1.5));let d=classic_tap(base+1.5);
     let lo=min(min(a,b),min(c,d));let hi=max(max(a,b),max(c,d));

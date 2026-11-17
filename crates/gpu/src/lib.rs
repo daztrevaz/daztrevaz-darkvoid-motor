@@ -771,6 +771,14 @@ impl GpuCompositor {
         let cpu_fx: Vec<Option<PlanLayer>> = layers
             .iter()
             .map(|l| {
+                let m = &l.matrix;
+                let classic = self.classic_scale.is_some() && ((m.a * m.a + m.b * m.b).sqrt() > 1.0 || (m.c * m.c + m.d * m.d).sqrt() > 1.0);
+                if classic && l.fx.is_none() && (self.fx.is_none() || l.frame.width.max(l.frame.height) > max_side) {
+                    // Devices without a working-image stage still get the reference filter.
+                    let fx = filmcraft_render::plan::LayerFx { size: (l.frame.width, l.frame.height), decimation: 1, turns: 0, ops: Vec::new() };
+                    let img = filmcraft_render::plan::effect_image_with(&l.frame, &fx, l.input.as_deref());
+                    return Some(PlanLayer::new(Arc::new(VideoFrame::rgba_f32(img.w as u32, img.h as u32, img.px)), l.matrix, l.opacity, l.blend));
+                }
                 let lfx = l.fx.as_ref()?;
                 if self.fx.is_some() && lfx.size.0.max(lfx.size.1) <= max_side {
                     return None;
@@ -814,7 +822,12 @@ impl GpuCompositor {
             // HDR / wide-gamut Y'CbCr: the planner's input transform, in the shader (#965)
             let src = SrcInfo { input: l.input.as_ref().filter(|_| src.kind == 2).and_then(|t| t.gpu_params()), ..src };
             let views = self.uploads.get(k).map_or_else(|| std::array::from_fn(|_| self.dummy.clone()), |up| up.views.clone());
-            let job = match &l.fx {
+            let m = &l.matrix;
+            let classic = self.classic_scale.is_some() && ((m.a * m.a + m.b * m.b).sqrt() > 1.0 || (m.c * m.c + m.d * m.d).sqrt() > 1.0);
+            let decode = filmcraft_render::plan::LayerFx { size: (l.frame.width, l.frame.height), decimation: 1, turns: 0, ops: Vec::new() };
+            // Decode YUV once on the GPU before cubic placement, rather than in every tap.
+            let source_fx = l.fx.as_deref().or_else(|| (classic && src.kind == 2).then_some(&decode));
+            let job = match source_fx {
                 Some(lfx) => {
                     // the source drawn onto the working image (box-decimated by n, as the CPU decodes)
                     let su = Self::fx_source_uniforms(&src, &l.frame, lfx);
@@ -862,12 +875,15 @@ impl GpuCompositor {
                     (Self::uniforms(&src, &m, l.opacity, l.blend, (w, h)), views)
                 }
             };
+            let decoded = job.is_some();
             jobs.push(job);
             let m = &l.matrix;
             if let Some(sharpness) = self.classic_scale.filter(|_| (m.a * m.a + m.b * m.b).sqrt() > 1.0 || (m.c * m.c + m.d * m.d).sqrt() > 1.0) {
                 // Negative values identify classical reconstruction only on the placement draw.
                 // Effect-source draws continue to carry positive integer decimation here.
-                u[26] = -(sharpness.clamp(0.0, 100.0) + 1.0);
+                if src.kind != 2 || decoded {
+                    u[26] = -(sharpness.clamp(0.0, 100.0) + 1.0);
+                }
             }
             let buf = self.uniform_buffer(&u);
             let mut entries = vec![
