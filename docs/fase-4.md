@@ -65,6 +65,14 @@ a ponta; sem medições extras além dos aceites de cada tarefa.
 - D4.0: tabela única em `src/editor/shortcuts.ts` (47 atalhos), menus e janela de atalhos; teste
   da tabela sem atalhos repetidos. Novos recursos entram na tabela e no menu da sua fase.
 
+- D4.3 (0.26.0): marcadores (M, Shift+M, Ctrl+Shift+M, lista), copiar/recortar/colar clipes
+  (Ctrl+C, Ctrl+X, Ctrl+V sobrescreve, Ctrl+Shift+V insere), versões anteriores (uma a cada 5 min,
+  20 por projeto, Arquivo ▸ Versões anteriores), osciloscópios na Cor (motor 0.4+), importar SRT
+  (lido pela tela; `captions.importSrt` saiu do contrato). Recuperação após queda = salvamento
+  automático 1,5 s + versões + oferta de reabrir o último projeto.
+- D4.1 pronta na tela (medidor, normalizar −14 LUFS, efeitos de áudio, cruzamento, ducking);
+  aparece quando o motor anunciar o protocolo 4.
+
 ## Portão 4 (teste de DTRZ)
 1. Vídeo com voz e música: limpar a voz, ducking na música, normalizar a −14 LUFS e conferir no medidor.
 2. Título animado de abertura e uma tarja de nome.
