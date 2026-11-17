@@ -6,9 +6,13 @@ partir da lista de recursos do FilmCraft que ficaram de fora.
 
 Começa depois do Portão 3b. A barra de menus e os atalhos (D4.0) começam antes, só na tela.
 
+Contrato: seção 9 de `protocolo-motor.md` (versão 4). Ordem: M4.1 e M4.2 (áudio) → M4.3 (títulos)
+→ M4.4 (exportações). Mesma regra da Fase 3: o motor só anuncia no catálogo o que funciona de ponta
+a ponta; sem medições extras além dos aceites de cada tarefa.
+
 ## Tarefas
 
-### D4.0 · Menus e atalhos (Claude, já pode começar)
+### D4.0 · Menus e atalhos (Claude) · concluída na 0.24.2
 - Barra de menus do editor no estilo da marca: Arquivo, Editar, Clipe, Linha do tempo, Marcadores,
   Títulos, Exibir, Ajuda. Só itens que existem; cada um mostra o atalho; itens indisponíveis apagados.
 - Tabela única de atalhos no padrão Premiere Pro adaptado para Windows (Cmd → Ctrl), só para o que
@@ -56,6 +60,10 @@ Começa depois do Portão 3b. A barra de menus e os atalhos (D4.0) começam ante
 
 ### I4.1 · Integração (Claude)
 - Motor novo fixado, versão do DarkFlow, publicação, passos do Portão 4.
+
+## Andamento
+- D4.0: tabela única em `src/editor/shortcuts.ts` (47 atalhos), menus e janela de atalhos; teste
+  da tabela sem atalhos repetidos. Novos recursos entram na tabela e no menu da sua fase.
 
 ## Portão 4 (teste de DTRZ)
 1. Vídeo com voz e música: limpar a voz, ducking na música, normalizar a −14 LUFS e conferir no medidor.
