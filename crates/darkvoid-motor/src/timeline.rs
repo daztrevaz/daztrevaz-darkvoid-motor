@@ -28,6 +28,8 @@ struct Clip {
     #[serde(default)]
     muted: bool,
     #[serde(default)]
+    audio_only: bool,
+    #[serde(default)]
     transition_in: Option<TransitionInput>,
     #[serde(default)]
     color: Option<crate::color::Color>,
@@ -255,10 +257,24 @@ impl Timeline {
             }
             let info = &media[&c.media].info;
             let image = info.kind == MediaKind::Still;
+            if c.audio_only {
+                if c.track.starts_with('V') {
+                    return Err(invalid(&c.id, "trilha errada para o tipo de mídia."));
+                }
+                if image {
+                    return Err(invalid(&c.id, "imagem não tem áudio."));
+                }
+                if !info.has_video() || !info.has_audio() {
+                    return Err(invalid(&c.id, "arquivo sem áudio de vídeo para separar."));
+                }
+            }
             if !c.audio_effects.is_empty() && !info.has_audio() {
                 return Err(crate::catalog::invalid(&c.id, "audioEffects: a mídia não contém áudio"));
             }
-            if c.track.starts_with('V') != info.has_video() || (image && c.source_in != 0.0) || (!image && Tick::from_seconds_f64(c.out) > info.duration) {
+            if (!c.audio_only && c.track.starts_with('V') != info.has_video())
+                || (image && c.source_in != 0.0)
+                || (!image && Tick::from_seconds_f64(c.out) > info.duration)
+            {
                 return Err(invalid(&c.id, "tipo incompatível com a trilha ou trecho além da duração da mídia."));
             }
         }

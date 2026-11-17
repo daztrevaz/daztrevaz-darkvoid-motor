@@ -172,7 +172,7 @@ impl Motor {
     fn execute(&mut self, command: &str, params: Value) -> Result<Value> {
         match command {
             "hello" => Ok(
-                json!({"version":VERSION,"protocol":4,"fonts":crate::captions::fonts(),"gpu":self.renderer.gpu,"encoders":self.exports.capabilities.names(),"speech":filmcraft_speech::available()}),
+                json!({"version":VERSION,"protocol":5,"fonts":crate::captions::fonts(),"gpu":self.renderer.gpu,"encoders":self.exports.capabilities.names(),"speech":filmcraft_speech::available()}),
             ),
             "catalog.get" => Ok(crate::catalog::get()),
             "scopes.get" => crate::color::scopes(&self.session, self.time, params),
