@@ -297,7 +297,92 @@ A tela pede no máximo 10 vezes por segundo e nunca no modo leve.
 
 Erros novos: `lut_invalid`.
 
-## 9. Regras
+## 9. Versão 4 (Fase 4): áudio, títulos e exportações extras
+
+`hello.protocol` passa a ser `4`. Tudo das versões anteriores continua valendo; campos novos ausentes
+= comportamento da v3. O catálogo (`catalog.get`) anuncia o que existe; a tela não envia o que ele
+não anuncia. Este rascunho foi escrito pelo Claude a partir do engine; o Codex propõe ajustes no PR
+da M4.1 se o engine pedir outra forma (sem mudar sozinho).
+
+### Catálogo: tipos novos
+
+`CatalogItem.kind` ganha `"audioEffect"`, `"duck"`, `"title"` e `"exportFormat"`.
+
+- `audio.<id>`: efeitos de áudio por clipe (limpeza de voz, equalizador, dinâmica). Parâmetros e
+  pontos-chave como os efeitos de vídeo (seção 8).
+- `audio.duck`: parâmetros do ducking da trilha.
+- `title.text`, `title.shape`: o que um clipe de título aceita (fontes em `choices`).
+- `export.gif`, `export.png`, `export.wav`: formatos extras (seção "Exportação").
+
+### Campos novos do `Clip`
+
+```ts
+type Clip = ClipV3 & {
+  gain?: number;                     // dB, -24 a +24, antes do volume (normalizar usa este campo)
+  audioEffects?: ClipEffect[];       // ids "audio.*"; ordem = ordem de processamento; trilhas A1/A2 e clipes de vídeo com som
+  crossfadeIn?: number;              // s, cruzamento de potência constante com o clipe anterior encostado na mesma trilha de áudio
+  title?: Title;                     // clipe de título (V1/V2); `media` = "title:<id estável>"; `in` = 0, `out` = duração
+};
+
+type Title = { layers: TitleLayer[] };
+type TitleLayer = {
+  type: "text" | "rect" | "ellipse";
+  box: [number, number, number, number];      // x, y, largura, altura em pixels do quadro do projeto
+  text?: string;                              // só "text"; quebra de linha com \n
+  font?: string;                              // uma das fontes de `hello.fonts`
+  size?: number;                              // px
+  bold?: boolean; italic?: boolean;
+  align?: "left" | "center" | "right";
+  fill: [number, number, number, number];     // RGBA 0..1
+  stroke?: { color: [number, number, number, number]; width: number };
+  shadow?: { color: [number, number, number, number]; blur: number; offset: [number, number] };
+  radius?: number;                            // cantos do retângulo
+};
+```
+- Título usa `transform` (posição, escala, rotação, opacidade com pontos-chave), `effects` e
+  transições como qualquer clipe visual.
+- `crossfadeIn` só vale com clipe anterior encostado na mesma trilha; senão `timeline_invalid`.
+
+### Trilhas (ducking)
+
+`timeline.set` aceita `tracks?: Partial<Record<"A1" | "A2", TrackAudio>>`:
+
+```ts
+type TrackAudio = {
+  duck?: {
+    by: ("V1" | "V2" | "A1" | "A2")[];   // trilhas com voz que fazem esta abaixar
+    reduce: number;                       // dB, 0 a 40 (padrão 12)
+    sensitivity: number;                  // 0 a 100 (padrão 50)
+    fade: number;                         // s, subida e descida (padrão 0,8)
+  };
+};
+```
+O motor detecta a voz nas trilhas `by` e abaixa esta trilha; prévia igual à exportação.
+
+### Loudness
+
+| Comando | Parâmetros | Resultado |
+| --- | --- | --- |
+| `audio.measure` | `{clipId?: string}` | `{jobId}`; job `loudness` com `{integrated, range, truePeak, maxMomentary, maxShortTerm}` (LUFS, LU, dBTP) da mistura ou de um clipe |
+
+Evento `meter` durante a reprodução, até 10 por segundo: `{momentary, shortTerm, truePeakL, truePeakR}`.
+
+`export.start` aceita `loudness?: {target: number, truePeak: number}` (padrão do canal: −14 LUFS,
+−1 dBTP); ausente = o comportamento atual da exportação.
+
+### Exportação
+
+`export.start` aceita `format?: "mp4" | "gif" | "png" | "wav"` (padrão `"mp4"`):
+- `gif`: `{fps (5 a 30), maxWidth}` em `gif?`; `png`: sequência numerada numa pasta (`path` é a pasta);
+  `wav`: só o áudio da mistura, 48 kHz, 24 bits.
+
+### Legendas
+
+`captions.importSrt {path}` → `{cues: Cue[]}` (a tela coloca na trilha; erros `srt_invalid`).
+
+Erros novos: `srt_invalid`.
+
+## 10. Regras
 
 - O motor só lê os caminhos que a tela manda e só grava no caminho de exportação pedido e dentro
   de `--data-dir`.
