@@ -11,6 +11,7 @@ mod exports;
 mod loudness;
 mod mix;
 mod motor;
+mod narration;
 mod peaks;
 mod preview;
 mod protocol;
