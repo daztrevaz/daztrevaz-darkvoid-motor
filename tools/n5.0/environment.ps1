@@ -1,0 +1,24 @@
+# Dot-source before creating the test environment or downloading anything.
+$env:HF_HOME = 'D:\DARKVOID\modelos-teste\hf'
+$env:TORCH_HOME = 'D:\DARKVOID\modelos-teste\torch'
+$env:HF_HUB_CACHE = "$env:HF_HOME\hub"
+$env:HF_XET_CACHE = "$env:HF_HOME\xet"
+$env:HUGGINGFACE_HUB_CACHE = $env:HF_HUB_CACHE
+$env:TRANSFORMERS_CACHE = "$env:HF_HOME\transformers"
+$env:XDG_CACHE_HOME = 'D:\DARKVOID\modelos-teste\cache'
+$env:PIP_CACHE_DIR = 'D:\DARKVOID\modelos-teste\pip-cache'
+$env:UV_CACHE_DIR = 'D:\DARKVOID\modelos-teste\uv-cache'
+$env:NUMBA_CACHE_DIR = 'D:\DARKVOID\modelos-teste\numba-cache'
+$env:CUDA_CACHE_PATH = 'D:\DARKVOID\modelos-teste\cuda-cache'
+$env:TORCH_EXTENSIONS_DIR = 'D:\DARKVOID\modelos-teste\torch-extensions'
+$env:TORCHINDUCTOR_CACHE_DIR = 'D:\DARKVOID\modelos-teste\inductor-cache'
+$env:TRITON_CACHE_DIR = 'D:\DARKVOID\modelos-teste\triton-cache'
+$env:MPLCONFIGDIR = 'D:\DARKVOID\modelos-teste\matplotlib'
+$env:TEMP = 'D:\DARKVOID\modelos-teste\tmp'
+$env:TMP = $env:TEMP
+$env:PYTHONPYCACHEPREFIX = 'D:\DARKVOID\modelos-teste\pycache'
+$env:HF_HUB_DISABLE_TELEMETRY = '1'
+$env:HF_HUB_DISABLE_XET = '1'
+$env:DO_NOT_TRACK = '1'
+$env:GRADIO_ANALYTICS_ENABLED = 'False'
+$env:WANDB_DISABLED = 'true'
