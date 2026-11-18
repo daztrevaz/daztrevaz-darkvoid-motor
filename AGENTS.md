@@ -34,6 +34,12 @@ importado no commit `59c6de0b9189c007ddd4eaa6c8b97e5a6c188937` sem a interface d
 5. **Licenças:** mantenha `LICENSE-MIT`, `LICENSE-APACHE`, `NOTICE` e `ATTRIBUTION.md`. Não use a
    marca FilmCraft ou ArtCraft no produto. Dependência nova só com licença permissiva (MIT,
    Apache-2.0, BSD, Zlib, ISC, MPL-2.0) e sem custo.
+   **Exceção aprovada por DTRZ (18/11/2026):** LGPL, em qualquer versão, é permitida
+   somente como dependência de execução instalada via pip no venv local em
+   `D:\DARKVOID\modelos-teste`, fora do repositório, chamada como processo separado.
+   Não copiar, modificar ou embutir código LGPL no repositório ou no motor.
+   Essa exceção não autoriza incorporar ou distribuir essas bibliotecas no binário.
+   GPL e AGPL continuam proibidas.
 6. **Mensagens de erro para a tela em português do Brasil** (`code` estável em inglês).
 7. **`unsafe` é proibido** (lint do workspace). Use bibliotecas seguras (ex.: `cpal`).
 8. **Só o que a tarefa pede.** Ideias extras vão como sugestão no PR.
