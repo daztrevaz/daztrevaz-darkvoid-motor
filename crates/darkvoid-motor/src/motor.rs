@@ -56,6 +56,7 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
         work_dir: data_dir.clone(),
         exports: Exports::new(data_dir.clone(), updates.jobs.clone(), ids.clone()),
         speech: crate::speech::Speech::new(data_dir.join("modelos"), updates.jobs.clone(), ids.clone()),
+        narration: crate::narration::Narration::new(data_dir.join("narracao"), ids.clone(), updates.jobs.clone()),
         loudness: crate::loudness::Loudness::new(ids, updates.jobs.clone()),
         session: Session::new(Arc::new(FsServices)),
         timeline: crate::timeline::Timeline::default(),
@@ -100,6 +101,7 @@ pub fn run(mut commands: mpsc::Receiver<Command>, updates: Updates, stopped: wat
         }
         motor.exports.poll();
         motor.speech.poll();
+        motor.narration.poll();
         motor.loudness.poll();
         if motor.audio.is_none() {
             stats_at = Instant::now();
@@ -142,6 +144,7 @@ struct Motor {
     work_dir: std::path::PathBuf,
     exports: Exports,
     speech: crate::speech::Speech,
+    narration: crate::narration::Narration,
     loudness: crate::loudness::Loudness,
     session: Session,
     timeline: crate::timeline::Timeline,
@@ -176,6 +179,8 @@ impl Motor {
             ),
             "catalog.get" => Ok(crate::catalog::get()),
             "scopes.get" => crate::color::scopes(&self.session, self.time, params),
+            "speech.voices" => Ok(self.narration.voices()),
+            "speech.say" => self.narration.say(field(params)?),
             "speech.models" => Ok(self.speech.list()),
             "speech.download" => self.speech.download(field(params)?),
             "speech.transcribe" => self.speech.transcribe(&self.session, field(params)?),
@@ -205,7 +210,11 @@ impl Motor {
             "captions.exportSrt" => crate::captions::export_srt(&self.session, field(params)?, &self.work_dir),
             "job.cancel" => {
                 let params: crate::exports::Cancel = field(params)?;
-                if self.speech.cancel(params.job_id) || self.loudness.cancel(params.job_id) { Ok(json!({})) } else { self.exports.cancel(params) }
+                if self.narration.cancel(params.job_id) || self.speech.cancel(params.job_id) || self.loudness.cancel(params.job_id) {
+                    Ok(json!({}))
+                } else {
+                    self.exports.cancel(params)
+                }
             }
             "media.probe" => {
                 let p: Path = field(params)?;
