@@ -29,7 +29,6 @@ impl Backend for QwenBase {
             && Path::new(ROOT).join("models/qwen3-base/model.safetensors").is_file()
             && Path::new(ROOT).join("models/qwen3-base/speech_tokenizer/model.safetensors").is_file();
         json!({"provider":"qwen-base","available":ready,"voices":[
-            {"id":"pt-c","name":"PT-BR (C)","language":"pt-BR","available":ready && Path::new(r"D:\DARKVOID\provavoz\prova2\referencias\voz-C.wav").is_file()},
             {"id":"en-en2","name":"EN (EN-2)","language":"en","available":ready && Path::new(r"D:\DARKVOID\provavoz\prova2\referencias-en\EN-2.wav").is_file()}
         ]})
     }
@@ -224,6 +223,14 @@ impl Drop for Narration {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn qwen_catalogue_offers_only_english_narration() {
+        let catalogue = QwenBase.catalogue();
+        let voices = catalogue["voices"].as_array().expect("perfis");
+        assert_eq!(voices.len(), 1);
+        assert_eq!(voices[0]["id"], "en-en2");
+        assert_eq!(voices[0]["language"], "en");
+    }
     struct Available;
     impl Backend for Available {
         fn catalogue(&self) -> Value {
