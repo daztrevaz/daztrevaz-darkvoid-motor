@@ -61,6 +61,8 @@ importado no commit `59c6de0b9189c007ddd4eaa6c8b97e5a6c188937` sem a interface d
 - Commits pequenos, em português.
 - Pronto = critérios de aceite da tarefa cumpridos e CI verde.
 - Releases (`motor-v*`) são publicadas só pela sessão principal do Claude.
+  Exceção autorizada por DTRZ em 19/11/2026: o Codex publica a release patch do
+  pacote `codex/correcoes-editor-1`, após CI aprovado, pelo workflow existente.
 
 ## Verificações antes do PR
 

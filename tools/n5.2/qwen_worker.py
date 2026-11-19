@@ -16,8 +16,6 @@ import wave
 
 ROOT = Path(r"D:\DARKVOID\modelos-teste")
 PROFILES = {
-    "pt-c": ("Portuguese", Path(r"D:\DARKVOID\provavoz\prova2\referencias\voz-C.wav"),
-             "c719c3c3967bef17fac3311a2ca20ad1ae9734d205cf9cd7f8f8021c40b6efc2"),
     "en-en2": ("English", Path(r"D:\DARKVOID\provavoz\prova2\referencias-en\EN-2.wav"),
                "62239f0bd21491f851b06b6ecad0721759c8602edb7c6dc8919b8c6beb5018b4"),
 }
