@@ -14,6 +14,11 @@ on:
         description: "Versão a publicar (ex.: 0.0.1). Vazio = só build."
         required: false
         default: ""
+      rascunho:
+        description: "Preparar release em rascunho para validar antes da publicação."
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -72,3 +77,4 @@ jobs:
           target_commitish: ${{ github.sha }}
           files: dist/*
           generate_release_notes: true
+          draft: ${{ inputs.rascunho == true }}
